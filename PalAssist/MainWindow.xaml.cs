@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -18,9 +20,12 @@ namespace PalAssist
         private WindowTracker?  _windowTracker;
         private FeatureManager? _featureManager;
         private ConfigManager?  _configManager;
+        private UpdateService?  _updateService;
+        private CancellationTokenSource? _updateCts;
+        private bool _updateInProgress;
 
         // ── Features ──
-        private HoldEFeature?         _holdE;
+        private WorkAssistFeature?         _workAssist;
         private SprintAssistFeature?  _sprint;
 
         // ── State ──
@@ -29,7 +34,7 @@ namespace PalAssist
 
         // ── Hotkey IDs ──
         private int _menuHotkeyId   = -1;
-        private int _holdEHotkeyId  = -1;
+        private int _workAssistHotkeyId  = -1;
         private int _sprintHotkeyId = -1;
 
         // ── Rebind state ──
@@ -77,8 +82,8 @@ namespace PalAssist
             // ── Features ──
             _featureManager = new FeatureManager();
 
-            _holdE = new HoldEFeature();
-            _featureManager.Register(_holdE);
+            _workAssist = new WorkAssistFeature();
+            _featureManager.Register(_workAssist);
 
             _sprint = new SprintAssistFeature
             {
@@ -111,12 +116,12 @@ namespace PalAssist
             RecoveryDurSlider.Value = cfg.RecoveryDuration;
             PauseDodgeCheck.IsChecked = cfg.SprintPauseDodge;
             HudDraggableToggle.IsChecked = cfg.HudDraggable;
-            HoldEShowHudCheck.IsChecked = cfg.HoldEShowHud;
+            WorkAssistShowHudCheck.IsChecked = cfg.WorkAssistShowHud;
 
             // Restore HUD preset combo selection
             SetHudPresetCombo(cfg.HudPreset);
 
-            if (cfg.HoldEEnabled) { _featureManager.Toggle(_holdE); HoldEToggle.IsChecked = true; }
+            if (cfg.WorkAssistEnabled) { _featureManager.Toggle(_workAssist); WorkAssistToggle.IsChecked = true; }
             if (cfg.SprintEnabled) { _featureManager.Toggle(_sprint); SprintToggle.IsChecked = true; }
 
             // ── Listen for rebind keypresses ──
@@ -155,6 +160,19 @@ namespace PalAssist
             else
             {
                 Dispatcher.InvokeAsync(CentreMenuIfNeeded, DispatcherPriority.Loaded);
+            }
+
+            // ── Updates ──
+            _updateService = new UpdateService();
+            VersionText.Text = $"PalAssist v{UpdateService.GetCurrentVersion()}";
+            UpdateStatusText.Text = "";
+            InstallUpdateBtn.Visibility = Visibility.Collapsed;
+            InstallUpdateBtn.IsEnabled = false;
+
+            // Always auto-check on boot; prompt before download/install
+            if (cfg.AutoCheckUpdates)
+            {
+                _ = BootUpdateCheckAsync();
             }
         }
 
@@ -209,8 +227,8 @@ namespace PalAssist
             uint menuVk = KeyHelper.ToVk(cfg.HotkeyMenu);
             if (menuVk != 0) _menuHotkeyId = _hotkeyManager.Register(menuVk, 0, OnMenuHotkeyPressed);
 
-            uint holdEVk = KeyHelper.ToVk(cfg.HotkeyHoldE);
-            if (holdEVk != 0) _holdEHotkeyId = _hotkeyManager.Register(holdEVk, 0, OnHoldEHotkeyPressed);
+            uint workAssistVk = KeyHelper.ToVk(cfg.HotkeyWorkAssist);
+            if (workAssistVk != 0) _workAssistHotkeyId = _hotkeyManager.Register(workAssistVk, 0, OnWorkAssistHotkeyPressed);
 
             uint sprintVk = KeyHelper.ToVk(cfg.HotkeySprint);
             if (sprintVk != 0) _sprintHotkeyId = _hotkeyManager.Register(sprintVk, 0, OnSprintHotkeyPressed);
@@ -224,14 +242,14 @@ namespace PalAssist
             var cfg = _configManager.Config;
 
             RebindMenuBtn.Content    = cfg.HotkeyMenu;
-            RebindHoldEBtn.Content   = cfg.HotkeyHoldE;
+            RebindWorkAssistBtn.Content   = cfg.HotkeyWorkAssist;
             RebindSprintBtn.Content  = cfg.HotkeySprint;
 
-            HoldESubtitle.Text   = $"Continuously holds the E key  ·  Hotkey: {cfg.HotkeyHoldE}";
+            WorkAssistSubtitle.Text   = $"Continuously holds the F key  ·  Hotkey: {cfg.HotkeyWorkAssist}";
             SprintSubtitle.Text  = $"Auto forward + sprint cycles  ·  Hotkey: {cfg.HotkeySprint}";
 
             FooterMenuKey.Text   = cfg.HotkeyMenu;
-            FooterHoldEKey.Text  = cfg.HotkeyHoldE;
+            FooterWorkAssistKey.Text  = cfg.HotkeyWorkAssist;
             FooterSprintKey.Text = cfg.HotkeySprint;
         }
 
@@ -247,11 +265,11 @@ namespace PalAssist
             if (_menuVisible) CentreMenuIfNeeded();
         }
 
-        private void OnHoldEHotkeyPressed()
+        private void OnWorkAssistHotkeyPressed()
         {
-            if (_holdE == null || _featureManager == null) return;
-            _featureManager.Toggle(_holdE);
-            HoldEToggle.IsChecked = _holdE.IsEnabled;
+            if (_workAssist == null || _featureManager == null) return;
+            _featureManager.Toggle(_workAssist);
+            WorkAssistToggle.IsChecked = _workAssist.IsEnabled;
         }
 
         private void OnSprintHotkeyPressed()
@@ -266,13 +284,13 @@ namespace PalAssist
         // ─────────────────────────────────────────────────
 
         private void RebindMenuBtn_Click(object s, RoutedEventArgs e)   => StartRebind("menu");
-        private void RebindHoldEBtn_Click(object s, RoutedEventArgs e)  => StartRebind("holdE");
+        private void RebindWorkAssistBtn_Click(object s, RoutedEventArgs e)  => StartRebind("workAssist");
         private void RebindSprintBtn_Click(object s, RoutedEventArgs e) => StartRebind("sprint");
 
         private void StartRebind(string target)
         {
             _rebindTarget = target;
-            var btn = target switch { "menu" => RebindMenuBtn, "holdE" => RebindHoldEBtn, _ => RebindSprintBtn };
+            var btn = target switch { "menu" => RebindMenuBtn, "workAssist" => RebindWorkAssistBtn, _ => RebindSprintBtn };
             btn.Content = "Press a key…";
 
             // Temporarily allow the overlay to be activated/focused so PreviewKeyDown fires.
@@ -322,7 +340,7 @@ namespace PalAssist
             string savedTarget = _rebindTarget!;
 
             ref int id = ref _menuHotkeyId;
-            if (savedTarget == "holdE")  id = ref _holdEHotkeyId;
+            if (savedTarget == "workAssist")  id = ref _workAssistHotkeyId;
             if (savedTarget == "sprint") id = ref _sprintHotkeyId;
 
             // Restore WS_EX_NOACTIVATE BEFORE re-registering so hotkey fires correctly
@@ -338,7 +356,7 @@ namespace PalAssist
             Action cb = target switch
             {
                 "menu"  => OnMenuHotkeyPressed,
-                "holdE" => OnHoldEHotkeyPressed,
+                "workAssist" => OnWorkAssistHotkeyPressed,
                 _       => OnSprintHotkeyPressed
             };
             hotkeyId = _hotkeyManager.Register(newVk, 0, cb);
@@ -346,7 +364,7 @@ namespace PalAssist
             switch (target)
             {
                 case "menu":   _configManager.Config.HotkeyMenu   = newName; break;
-                case "holdE":  _configManager.Config.HotkeyHoldE  = newName; break;
+                case "workAssist":  _configManager.Config.HotkeyWorkAssist  = newName; break;
                 case "sprint": _configManager.Config.HotkeySprint = newName; break;
             }
             _configManager.Save();
@@ -395,11 +413,11 @@ namespace PalAssist
         //  Feature UI event handlers
         // ─────────────────────────────────────────────────
 
-        private void HoldEToggle_Changed(object s, RoutedEventArgs e)
+        private void WorkAssistToggle_Changed(object s, RoutedEventArgs e)
         {
-            if (_holdE == null || _featureManager == null) return;
-            bool want = HoldEToggle.IsChecked == true;
-            if (want != _holdE.IsEnabled) _featureManager.Toggle(_holdE);
+            if (_workAssist == null || _featureManager == null) return;
+            bool want = WorkAssistToggle.IsChecked == true;
+            if (want != _workAssist.IsEnabled) _featureManager.Toggle(_workAssist);
         }
 
         private void SprintToggle_Changed(object s, RoutedEventArgs e)
@@ -454,50 +472,15 @@ namespace PalAssist
             _configManager.Config.HudDraggable = HudDraggableToggle.IsChecked == true;
         }
 
-        private void HoldEShowHudCheck_Changed(object s, RoutedEventArgs e)
+        private void WorkAssistShowHudCheck_Changed(object s, RoutedEventArgs e)
         {
             if (_configManager == null) return;
-            _configManager.Config.HoldEShowHud = HoldEShowHudCheck.IsChecked == true;
+            _configManager.Config.WorkAssistShowHud = WorkAssistShowHudCheck.IsChecked == true;
             UpdateHud();
         }
 
-        private async void SaveSettingsBtn_Click(object s, RoutedEventArgs e)
-        {
-            if (_configManager == null) return;
-
-            // In-memory update of current values from UI
-            var cfg = _configManager.Config;
-            if (_holdE != null) cfg.HoldEEnabled = _holdE.IsEnabled;
-            if (_sprint != null) cfg.SprintEnabled = _sprint.IsEnabled;
-            
-            cfg.SprintDuration = SprintDurSlider.Value;
-            cfg.RecoveryDuration = RecoveryDurSlider.Value;
-            cfg.SprintPauseDodge = PauseDodgeCheck.IsChecked == true;
-            cfg.HudDraggable = HudDraggableToggle.IsChecked == true;
-            cfg.HoldEShowHud = HoldEShowHudCheck.IsChecked == true;
-
-            if (HudPresetCombo.SelectedItem != null)
-            {
-                cfg.HudPreset = ((ComboBoxItem)HudPresetCombo.SelectedItem).Content.ToString()!.Replace("-", "");
-            }
-
-            // Write to config.json
-            _configManager.Save();
-
-            // Visual feedback on button
-            SaveSettingsBtn.Content = "Settings Saved! ✓";
-            SaveSettingsBtn.IsEnabled = false;
-            SaveSettingsBtn.Background = (SolidColorBrush)FindResource("AccentGreenBrush");
-            SaveSettingsBtn.Foreground = Brushes.White;
-
-            await System.Threading.Tasks.Task.Delay(1500);
-
-            // Restore original styles explicitly (avoiding ClearValue transparency fallbacks)
-            SaveSettingsBtn.Content = "Save Settings";
-            SaveSettingsBtn.IsEnabled = true;
-            SaveSettingsBtn.Background = (SolidColorBrush)FindResource("AccentBlueBrush");
-            SaveSettingsBtn.Foreground = (SolidColorBrush)FindResource("TextPrimaryBrush");
-        }
+        // Save Settings is intentionally disabled for now (UI shows greyed out).
+        // Settings continue to auto-save on change / close.
 
         private void SetHudPresetCombo(string preset)
         {
@@ -513,18 +496,276 @@ namespace PalAssist
         }
 
         // ─────────────────────────────────────────────────
-        //  Mock "Check for Updates" button
+        //  Auto-update (GitHub Releases)
         // ─────────────────────────────────────────────────
 
         private async void UpdateBtn_Click(object s, RoutedEventArgs e)
         {
-            UpdateBtn.Content = "Checking…";
-            UpdateBtn.IsEnabled = false;
-            await System.Threading.Tasks.Task.Delay(1500);
-            UpdateBtn.Content = "Up to date!";
-            await System.Threading.Tasks.Task.Delay(2000);
+            // Manual check: look for update, then prompt to download & install
+            await RunUpdateCheckAsync(downloadIfAvailable: false, userInitiated: true);
+            if (_updateService?.PendingUpdate is { Success: true, UpdateAvailable: true } pending
+                && !_updateService.IsStaged)
+            {
+                bool yes = PromptInstallUpdate(pending.LatestVersion);
+                if (yes)
+                    await DownloadAndInstallNowAsync();
+            }
+            else if (_updateService?.IsStaged == true)
+            {
+                bool yes = PromptInstallUpdate(_updateService.PendingUpdate?.LatestVersion ?? "?");
+                if (yes)
+                    ApplyStagedUpdateAndRestart();
+            }
+        }
+
+        private void InstallUpdateBtn_Click(object s, RoutedEventArgs e)
+        {
+            ApplyStagedUpdateAndRestart();
+        }
+
+        /// <summary>
+        /// On boot: check for updates (no silent download). If available, ask the user.
+        /// </summary>
+        private async Task BootUpdateCheckAsync()
+        {
+            await RunUpdateCheckAsync(downloadIfAvailable: false, userInitiated: false);
+            if (_updateService?.PendingUpdate is not { Success: true, UpdateAvailable: true } pending)
+                return;
+
+            bool yes = PromptInstallUpdate(pending.LatestVersion);
+            if (yes)
+                await DownloadAndInstallNowAsync();
+            else
+                SetUpdateStatus($"v{pending.LatestVersion} available — use Check for Updates when ready.");
+        }
+
+        private bool PromptInstallUpdate(string version)
+        {
+            var result = MessageBox.Show(
+                this,
+                $"PalAssist v{version} is available.\n\nDownload and install now?\n(The app will restart after installing.)",
+                "Update Available",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            return result == MessageBoxResult.Yes;
+        }
+
+        private async Task DownloadAndInstallNowAsync()
+        {
+            if (_updateService == null) return;
+
+            _updateInProgress = true;
+            _updateCts?.Cancel();
+            _updateCts = new CancellationTokenSource();
+            var ct = _updateCts.Token;
+
+            try
+            {
+                UpdateBtn.IsEnabled = false;
+                UpdateBtn.Content = "Downloading…";
+                SetUpdateStatus("Downloading update…");
+
+                var progress = new Progress<double>(p =>
+                {
+                    _ = Dispatcher.InvokeAsync(() =>
+                    {
+                        UpdateBtn.Content = "Downloading…";
+                        SetUpdateStatus($"Downloading update… {p:0}%");
+                    });
+                });
+
+                // Ensure we have release metadata
+                if (_updateService.PendingUpdate is not { UpdateAvailable: true })
+                {
+                    var check = await _updateService.CheckForUpdateAsync(ct).ConfigureAwait(true);
+                    if (!check.Success || !check.UpdateAvailable)
+                    {
+                        ApplyUpdateUi(check);
+                        return;
+                    }
+                }
+
+                var result = await _updateService.DownloadAndStageAsync(progress, ct).ConfigureAwait(true);
+                ApplyUpdateUi(result);
+
+                if (result.Success && (result.Staged || _updateService.IsStaged))
+                    ApplyStagedUpdateAndRestart();
+            }
+            catch (OperationCanceledException)
+            {
+                SetUpdateStatus("Update download cancelled.");
+                UpdateBtn.Content = "Check for Updates";
+                UpdateBtn.IsEnabled = true;
+            }
+            catch (Exception ex)
+            {
+                SetUpdateStatus($"Download failed: {ex.Message}");
+                UpdateBtn.Content = "Check for Updates";
+                UpdateBtn.IsEnabled = true;
+            }
+            finally
+            {
+                _updateInProgress = false;
+            }
+        }
+
+        private void ApplyStagedUpdateAndRestart()
+        {
+            if (_updateService == null || !_updateService.IsStaged)
+            {
+                SetUpdateStatus("No update is ready to install.");
+                return;
+            }
+
+            try
+            {
+                _featureManager?.DisableAll();
+
+                if (_configManager != null)
+                {
+                    if (_workAssist != null)  _configManager.Config.WorkAssistEnabled  = false;
+                    if (_sprint != null) _configManager.Config.SprintEnabled = false;
+                    _configManager.Config.MenuX = Canvas.GetLeft(MenuPanel);
+                    _configManager.Config.MenuY = Canvas.GetTop(MenuPanel);
+                    _configManager.Save();
+                }
+
+                SetUpdateStatus("Installing update… restarting shortly.");
+                InstallUpdateBtn.IsEnabled = false;
+                UpdateBtn.IsEnabled = false;
+
+                if (!_updateService.ApplyAndRestart())
+                {
+                    SetUpdateStatus("Could not start the updater. Try running as admin or reinstall.");
+                    UpdateBtn.IsEnabled = true;
+                    InstallUpdateBtn.IsEnabled = true;
+                    return;
+                }
+
+                Application.Current.Shutdown();
+            }
+            catch (Exception ex)
+            {
+                SetUpdateStatus($"Install failed: {ex.Message}");
+                UpdateBtn.IsEnabled = true;
+                InstallUpdateBtn.IsEnabled = true;
+            }
+        }
+
+        private async Task RunUpdateCheckAsync(bool downloadIfAvailable, bool userInitiated)
+        {
+            if (_updateService == null) return;
+            if (_updateInProgress)
+            {
+                if (userInitiated)
+                    SetUpdateStatus("Update check already in progress…");
+                return;
+            }
+
+            _updateInProgress = true;
+            _updateCts?.Cancel();
+            _updateCts = new CancellationTokenSource();
+            var ct = _updateCts.Token;
+
+            try
+            {
+                UpdateBtn.IsEnabled = false;
+                UpdateBtn.Content = "Checking…";
+                if (userInitiated || string.IsNullOrEmpty(UpdateStatusText.Text))
+                    SetUpdateStatus("Checking for updates…");
+
+                UpdateCheckResult result;
+                if (downloadIfAvailable)
+                {
+                    var progress = new Progress<double>(p =>
+                    {
+                        _ = Dispatcher.InvokeAsync(() =>
+                        {
+                            UpdateBtn.Content = "Downloading…";
+                            SetUpdateStatus($"Downloading update… {p:0}%");
+                        });
+                    });
+
+                    result = await _updateService.CheckForUpdateAsync(ct).ConfigureAwait(true);
+                    if (result.Success && result.UpdateAvailable)
+                    {
+                        UpdateBtn.Content = "Downloading…";
+                        SetUpdateStatus($"Downloading v{result.LatestVersion}…");
+                        result = await _updateService.DownloadAndStageAsync(progress, ct).ConfigureAwait(true);
+                    }
+                }
+                else
+                {
+                    result = await _updateService.CheckForUpdateAsync(ct).ConfigureAwait(true);
+                }
+
+                ApplyUpdateUi(result);
+            }
+            catch (OperationCanceledException)
+            {
+                if (userInitiated)
+                    SetUpdateStatus("Update check cancelled.");
+                UpdateBtn.Content = "Check for Updates";
+                UpdateBtn.IsEnabled = true;
+            }
+            catch (Exception ex)
+            {
+                SetUpdateStatus($"Update check failed: {ex.Message}");
+                UpdateBtn.Content = "Check for Updates";
+                UpdateBtn.IsEnabled = true;
+                InstallUpdateBtn.Visibility = Visibility.Collapsed;
+                InstallUpdateBtn.IsEnabled = false;
+            }
+            finally
+            {
+                _updateInProgress = false;
+            }
+        }
+
+        private void ApplyUpdateUi(UpdateCheckResult result)
+        {
+            VersionText.Text = $"PalAssist v{UpdateService.GetCurrentVersion()}";
+
+            if (!result.Success)
+            {
+                SetUpdateStatus(result.Message);
+                UpdateBtn.Content = "Check for Updates";
+                UpdateBtn.IsEnabled = true;
+                InstallUpdateBtn.Visibility = Visibility.Collapsed;
+                InstallUpdateBtn.IsEnabled = false;
+                return;
+            }
+
+            if (result.UpdateAvailable && (result.Staged || _updateService?.IsStaged == true))
+            {
+                SetUpdateStatus($"v{result.LatestVersion} ready — click Install & Restart.");
+                UpdateBtn.Content = "Check for Updates";
+                UpdateBtn.IsEnabled = true;
+                InstallUpdateBtn.Visibility = Visibility.Visible;
+                InstallUpdateBtn.IsEnabled = true;
+                return;
+            }
+
+            if (result.UpdateAvailable)
+            {
+                SetUpdateStatus($"v{result.LatestVersion} available.");
+                UpdateBtn.Content = "Check for Updates";
+                UpdateBtn.IsEnabled = true;
+                InstallUpdateBtn.Visibility = Visibility.Collapsed;
+                InstallUpdateBtn.IsEnabled = false;
+                return;
+            }
+
+            SetUpdateStatus(result.Message);
             UpdateBtn.Content = "Check for Updates";
             UpdateBtn.IsEnabled = true;
+            InstallUpdateBtn.Visibility = Visibility.Collapsed;
+            InstallUpdateBtn.IsEnabled = false;
+        }
+
+        private void SetUpdateStatus(string text)
+        {
+            UpdateStatusText.Text = text;
         }
 
         // ─────────────────────────────────────────────────
@@ -533,13 +774,13 @@ namespace PalAssist
 
         private void SyncUI()
         {
-            if (_holdE != null)
+            if (_workAssist != null)
             {
-                bool on = _holdE.IsEnabled;
-                HoldEDot.Fill = on
+                bool on = _workAssist.IsEnabled;
+                WorkAssistDot.Fill = on
                     ? (SolidColorBrush)FindResource("AccentGreenBrush")
                     : (SolidColorBrush)FindResource("AccentRedBrush");
-                HoldEToggle.IsChecked = on;
+                WorkAssistToggle.IsChecked = on;
             }
             if (_sprint != null)
             {
@@ -577,10 +818,10 @@ namespace PalAssist
 
             bool anyActive = false;
 
-            if (_holdE != null && _holdE.IsEnabled && (_configManager == null || _configManager.Config.HoldEShowHud))
+            if (_workAssist != null && _workAssist.IsEnabled && (_configManager == null || _configManager.Config.WorkAssistShowHud))
             {
                 anyActive = true;
-                AddHudRow("Hold E", "Active", (SolidColorBrush)FindResource("AccentGreenBrush"));
+                AddHudRow("Work Assist", "Active", (SolidColorBrush)FindResource("AccentGreenBrush"));
             }
 
             if (_sprint != null && _sprint.IsEnabled)
@@ -769,10 +1010,11 @@ namespace PalAssist
         private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
             _uiTimer?.Stop();
+            _updateCts?.Cancel();
 
             if (_configManager != null)
             {
-                if (_holdE != null)  _configManager.Config.HoldEEnabled  = _holdE.IsEnabled;
+                if (_workAssist != null)  _configManager.Config.WorkAssistEnabled  = _workAssist.IsEnabled;
                 if (_sprint != null) _configManager.Config.SprintEnabled = _sprint.IsEnabled;
                 _configManager.Config.MenuX = Canvas.GetLeft(MenuPanel);
                 _configManager.Config.MenuY = Canvas.GetTop(MenuPanel);
@@ -782,6 +1024,7 @@ namespace PalAssist
             _featureManager?.Dispose();
             _hotkeyManager?.Dispose();
             _windowTracker?.Dispose();
+            _updateService?.Dispose();
         }
     }
 }

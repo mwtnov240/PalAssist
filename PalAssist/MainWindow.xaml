@@ -160,7 +160,7 @@
                      ════════════════════════════════════════ -->
                 <StackPanel x:Name="PanelAssists">
 
-                    <!-- ── Hold E Assist ── -->
+                    <!-- ── Work Assist ── -->
                     <Border Margin="14,10,14,6" Padding="14,12" CornerRadius="10">
                         <Border.Background>
                             <SolidColorBrush Color="#1A1A2E" Opacity="0.7"/>
@@ -173,33 +173,33 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0">
                                     <StackPanel Orientation="Horizontal">
-                                        <Ellipse x:Name="HoldEDot" Width="9" Height="9"
+                                        <Ellipse x:Name="WorkAssistDot" Width="9" Height="9"
                                                  Fill="{StaticResource AccentRedBrush}"
                                                  Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Hold E Assist"
+                                        <TextBlock Text="Work Assist"
                                                    FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextPrimaryBrush}"/>
                                     </StackPanel>
-                                    <TextBlock x:Name="HoldESubtitle"
-                                               Text="Continuously holds the E key  ·  Hotkey: F1"
+                                    <TextBlock x:Name="WorkAssistSubtitle"
+                                               Text="Continuously holds the F key  ·  Hotkey: F1"
                                                FontFamily="Segoe UI" FontSize="10"
                                                Foreground="{StaticResource TextSecondaryBrush}"
                                                Margin="17,3,0,0"/>
                                 </StackPanel>
-                                <ToggleButton x:Name="HoldEToggle" Grid.Column="1"
+                                <ToggleButton x:Name="WorkAssistToggle" Grid.Column="1"
                                               Style="{StaticResource ToggleSwitchStyle}"
                                               VerticalAlignment="Center"
-                                              Checked="HoldEToggle_Changed"
-                                              Unchecked="HoldEToggle_Changed"/>
+                                              Checked="WorkAssistToggle_Changed"
+                                              Unchecked="WorkAssistToggle_Changed"/>
                             </Grid>
 
                             <!-- Show HUD Indicator checkbox -->
-                            <CheckBox x:Name="HoldEShowHudCheck" Content="Show HUD Indicator"
+                            <CheckBox x:Name="WorkAssistShowHudCheck" Content="Show HUD Indicator"
                                       Foreground="{StaticResource TextSecondaryBrush}"
                                       FontFamily="Segoe UI" FontSize="11"
                                       Margin="17,6,0,0"
-                                      Checked="HoldEShowHudCheck_Changed"
-                                      Unchecked="HoldEShowHudCheck_Changed"/>
+                                      Checked="WorkAssistShowHudCheck_Changed"
+                                      Unchecked="WorkAssistShowHudCheck_Changed"/>
                         </StackPanel>
                     </Border>
 
@@ -345,18 +345,18 @@
                                         Content="Insert" Style="{StaticResource RebindBtnStyle}"
                                         Click="RebindMenuBtn_Click"/>
                             </Grid>
-                            <!-- Hold E Toggle -->
+                            <!-- Work Assist Toggle -->
                             <Grid Margin="0,0,0,6">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="Hold E Toggle" FontFamily="Segoe UI" FontSize="12"
+                                <TextBlock Text="Work Assist Toggle" FontFamily="Segoe UI" FontSize="12"
                                            Foreground="{StaticResource TextSecondaryBrush}"
                                            VerticalAlignment="Center"/>
-                                <Button x:Name="RebindHoldEBtn" Grid.Column="1"
+                                <Button x:Name="RebindWorkAssistBtn" Grid.Column="1"
                                         Content="F1" Style="{StaticResource RebindBtnStyle}"
-                                        Click="RebindHoldEBtn_Click"/>
+                                        Click="RebindWorkAssistBtn_Click"/>
                             </Grid>
                             <!-- Sprint Toggle -->
                             <Grid>
@@ -420,24 +420,20 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- ── Save Settings Button ── -->
+                    <!-- ── Save Settings Button (disabled for now — settings still auto-save) ── -->
                     <Button x:Name="SaveSettingsBtn" Margin="14,2,14,6" Height="34"
-                            Content="Save Settings" Style="{StaticResource RebindBtnStyle}"
-                            Background="#0F3460" Foreground="{StaticResource TextPrimaryBrush}"
-                            BorderThickness="0" Click="SaveSettingsBtn_Click">
+                            Content="Save Settings (Coming Soon)"
+                            IsEnabled="False"
+                            Background="#2A2A3E" Foreground="#666680"
+                            BorderThickness="0" Opacity="0.65"
+                            ToolTip="Coming soon — settings already save automatically">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
                                 <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                        CornerRadius="10">
+                                        CornerRadius="10" Opacity="{TemplateBinding Opacity}">
                                     <ContentPresenter HorizontalAlignment="Center"
                                                       VerticalAlignment="Center"/>
                                 </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Bd" Property="Background" Value="#00D2FF"/>
-                                        <Setter Property="Foreground" Value="#16213E"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
                             </ControlTemplate>
                         </Button.Template>
                     </Button>
@@ -451,14 +447,24 @@
                             <TextBlock Text="About" FontFamily="Segoe UI" FontSize="13"
                                        FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
                                        Margin="0,0,0,6"/>
-                            <TextBlock Text="PalAssist v1.0" FontFamily="Segoe UI" FontSize="12"
+                            <TextBlock x:Name="VersionText" Text="PalAssist" FontFamily="Segoe UI" FontSize="12"
                                        Foreground="{StaticResource TextSecondaryBrush}"/>
                             <TextBlock Text="External Input Assist • No memory reading"
                                        FontFamily="Segoe UI" FontSize="10"
-                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,6"/>
-                            <Button x:Name="UpdateBtn" Content="Check for Updates"
-                                    Style="{StaticResource RebindBtnStyle}" HorizontalAlignment="Left"
-                                    Click="UpdateBtn_Click"/>
+                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,4"/>
+                            <TextBlock x:Name="UpdateStatusText" Text=""
+                                       FontFamily="Segoe UI" FontSize="10"
+                                       Foreground="{StaticResource AccentCyanBrush}"
+                                       TextWrapping="Wrap" Margin="0,0,0,6"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="UpdateBtn" Content="Check for Updates"
+                                        Style="{StaticResource RebindBtnStyle}"
+                                        Click="UpdateBtn_Click" Margin="0,0,8,0"/>
+                                <Button x:Name="InstallUpdateBtn" Content="Install &amp; Restart"
+                                        Style="{StaticResource RebindBtnStyle}"
+                                        Click="InstallUpdateBtn_Click"
+                                        Visibility="Collapsed" IsEnabled="false"/>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -474,9 +480,9 @@
                         <Run x:Name="FooterMenuKey" Text="Insert" FontWeight="Bold"
                              Foreground="{StaticResource AccentCyanBrush}"/>
                         <Run Text=" menu  ·  "/>
-                        <Run x:Name="FooterHoldEKey" Text="F1" FontWeight="Bold"
+                        <Run x:Name="FooterWorkAssistKey" Text="F1" FontWeight="Bold"
                              Foreground="{StaticResource AccentCyanBrush}"/>
-                        <Run Text=" hold E  ·  "/>
+                        <Run Text=" work  ·  "/>
                         <Run x:Name="FooterSprintKey" Text="F2" FontWeight="Bold"
                              Foreground="{StaticResource AccentCyanBrush}"/>
                         <Run Text=" sprint"/>

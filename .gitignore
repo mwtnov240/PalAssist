@@ -30,6 +30,7 @@ bld/
 ## Build results
 [Dd]ebugPublic/
 [Rr]eleases/
+publish/
 *.dll
 *.exe
 *.pdb
