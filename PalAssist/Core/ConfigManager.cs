@@ -31,10 +31,57 @@ namespace PalAssist.Core
             {
                 string json = File.ReadAllText(ConfigPath);
                 Config = JsonSerializer.Deserialize<AppConfig>(json) ?? new AppConfig();
+                if (MigrateLegacyHoldEKeys(json, Config))
+                    Save();
             }
             catch
             {
                 Config = new AppConfig();
+            }
+        }
+
+        /// <summary>
+        /// Maps old holdE_* config keys to workAssist_* when the new keys are absent.
+        /// Returns true if any migration was applied.
+        /// </summary>
+        private static bool MigrateLegacyHoldEKeys(string json, AppConfig cfg)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                bool changed = false;
+
+                bool hasNewEnabled = root.TryGetProperty("workAssist_enabled", out _);
+                if (!hasNewEnabled && root.TryGetProperty("holdE_enabled", out var oldEn))
+                {
+                    cfg.WorkAssistEnabled = oldEn.GetBoolean();
+                    changed = true;
+                }
+
+                bool hasNewHud = root.TryGetProperty("workAssist_showHud", out _);
+                if (!hasNewHud && root.TryGetProperty("holdE_showHud", out var oldHud))
+                {
+                    cfg.WorkAssistShowHud = oldHud.GetBoolean();
+                    changed = true;
+                }
+
+                bool hasNewHotkey = root.TryGetProperty("hotkey_workAssist", out _);
+                if (!hasNewHotkey && root.TryGetProperty("hotkey_holdE", out var oldHk))
+                {
+                    string? s = oldHk.GetString();
+                    if (!string.IsNullOrWhiteSpace(s))
+                    {
+                        cfg.HotkeyWorkAssist = s;
+                        changed = true;
+                    }
+                }
+
+                return changed;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -62,12 +109,12 @@ namespace PalAssist.Core
     /// </summary>
     public class AppConfig
     {
-        // ── Hold E ──
-        [JsonPropertyName("holdE_enabled")]
-        public bool HoldEEnabled { get; set; } = false;
+        // ── Work Assist (holds F) ──
+        [JsonPropertyName("workAssist_enabled")]
+        public bool WorkAssistEnabled { get; set; } = false;
 
-        [JsonPropertyName("holdE_showHud")]
-        public bool HoldEShowHud { get; set; } = true;
+        [JsonPropertyName("workAssist_showHud")]
+        public bool WorkAssistShowHud { get; set; } = true;
 
         // ── Sprint Assist ──
         [JsonPropertyName("sprint_enabled")]
@@ -109,8 +156,8 @@ namespace PalAssist.Core
         [JsonPropertyName("hotkey_menu")]
         public string HotkeyMenu { get; set; } = "Insert";
 
-        [JsonPropertyName("hotkey_holdE")]
-        public string HotkeyHoldE { get; set; } = "F1";
+        [JsonPropertyName("hotkey_workAssist")]
+        public string HotkeyWorkAssist { get; set; } = "F1";
 
         [JsonPropertyName("hotkey_sprint")]
         public string HotkeySprint { get; set; } = "F2";

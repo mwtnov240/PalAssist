@@ -10,7 +10,7 @@ A modern, external overlay & input-assist tool for **Palworld** on Windows.
 
 | Feature | Description | Default Hotkey |
 |---|---|---|
-| **Hold E Assist** | Continuously holds the E key for interactions | `F1` |
+| **Work Assist** | Continuously holds the F key for work/interactions | `F1` |
 | **Sprint Assist** | Auto-walks forward (W) with timed sprint/recovery cycles (Shift) | `F2` |
 | **Overlay Menu** | Tabbed dark-themed menu on top of the game | `Insert` |
 | **HUD Indicator** | Consolidated status panel showing active assists | Configurable |
@@ -74,7 +74,7 @@ Output: `PalAssist\bin\Release\net8.0-windows\PalAssist.exe`
 
 | Tab | Contents |
 |---|---|
-| **Assists** | Hold E toggle, Sprint Assist toggle + sliders + dodge pause option |
+| **Assists** | Work Assist toggle, Sprint Assist toggle + sliders + dodge pause option |
 | **AI Assists** | Placeholder — "Coming in a future update" |
 | **Settings** | Hotkey rebinding, HUD position preset/drag, About + auto-update |
 
@@ -136,7 +136,7 @@ PalAssist/
 └── Features/
     ├── IFeature.cs                # Feature interface
     ├── FeatureManager.cs          # Feature registry + 60Hz tick loop
-    ├── HoldEFeature.cs            # Hold E implementation
+    ├── WorkAssistFeature.cs       # Work Assist (hold F) implementation
     └── SprintAssistFeature.cs     # Sprint Assist state machine
 ```
 
@@ -163,7 +163,7 @@ PalAssist/
    _featureManager.Register(myFeature);
    ```
 
-3. **Add a UI toggle** in `MainWindow.xaml` (copy the Hold E card block and update names).
+3. **Add a UI toggle** in `MainWindow.xaml` (copy the Work Assist card block and update names).
 
 4. **(Optional)** Add a hotkey in `AppConfig` and register it in `RegisterConfigHotkeys()`.
 
@@ -174,13 +174,13 @@ PalAssist/
 All settings persist to `config.json`:
 ```json
 {
-  "holdE_enabled": false,
+  "workAssist_enabled": false,
   "sprint_enabled": false,
   "sprint_duration": 8.0,
   "sprint_recovery": 4.0,
   "sprint_pauseDodge": false,
   "hotkey_menu": "Insert",
-  "hotkey_holdE": "F1",
+  "hotkey_workAssist": "F1",
   "hotkey_sprint": "F2",
   "hud_preset": "TopRight",
   "hud_draggable": false,

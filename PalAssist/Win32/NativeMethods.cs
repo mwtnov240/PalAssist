@@ -89,17 +89,35 @@ namespace PalAssist.Win32
         [DllImport("user32.dll", SetLastError = true)]
         public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
+        [DllImport("user32.dll")]
+        public static extern uint MapVirtualKey(uint uCode, uint uMapType);
+
+        public const uint MAPVK_VK_TO_VSC = 0;
+
         public const int INPUT_KEYBOARD = 1;
+        public const int INPUT_MOUSE    = 0;
 
         public const uint KEYEVENTF_KEYDOWN   = 0x0000;
         public const uint KEYEVENTF_KEYUP     = 0x0002;
         public const uint KEYEVENTF_SCANCODE  = 0x0008;
+        public const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
 
-        // Scan codes (US layout)
-        public const ushort SCAN_E     = 0x12;
+        // Virtual keys used for game input
+        public const ushort VK_W     = 0x57;
+        public const ushort VK_E     = 0x45;
+        public const ushort VK_F     = 0x46;
+        public const ushort VK_LSHIFT = 0xA0;
+
+        // Scan codes (US layout) — physical key positions
         public const ushort SCAN_W     = 0x11;
+        public const ushort SCAN_E     = 0x12;
+        public const ushort SCAN_F     = 0x21;
         public const ushort SCAN_SHIFT = 0x2A;  // Left Shift
 
+        /// <summary>
+        /// Full INPUT size on x64 must match the largest union arm (MOUSEINPUT).
+        /// Undersized structs cause SendInput to fail silently.
+        /// </summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct INPUT
         {
@@ -110,7 +128,19 @@ namespace PalAssist.Win32
         [StructLayout(LayoutKind.Explicit)]
         public struct INPUTUNION
         {
+            [FieldOffset(0)] public MOUSEINPUT mi;
             [FieldOffset(0)] public KEYBDINPUT ki;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MOUSEINPUT
+        {
+            public int    dx;
+            public int    dy;
+            public uint   mouseData;
+            public uint   dwFlags;
+            public uint   time;
+            public IntPtr dwExtraInfo;
         }
 
         [StructLayout(LayoutKind.Sequential)]

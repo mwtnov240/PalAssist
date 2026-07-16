@@ -25,7 +25,7 @@ namespace PalAssist
         private bool _updateInProgress;
 
         // ── Features ──
-        private HoldEFeature?         _holdE;
+        private WorkAssistFeature?         _workAssist;
         private SprintAssistFeature?  _sprint;
 
         // ── State ──
@@ -34,7 +34,7 @@ namespace PalAssist
 
         // ── Hotkey IDs ──
         private int _menuHotkeyId   = -1;
-        private int _holdEHotkeyId  = -1;
+        private int _workAssistHotkeyId  = -1;
         private int _sprintHotkeyId = -1;
 
         // ── Rebind state ──
@@ -82,8 +82,8 @@ namespace PalAssist
             // ── Features ──
             _featureManager = new FeatureManager();
 
-            _holdE = new HoldEFeature();
-            _featureManager.Register(_holdE);
+            _workAssist = new WorkAssistFeature();
+            _featureManager.Register(_workAssist);
 
             _sprint = new SprintAssistFeature
             {
@@ -116,12 +116,12 @@ namespace PalAssist
             RecoveryDurSlider.Value = cfg.RecoveryDuration;
             PauseDodgeCheck.IsChecked = cfg.SprintPauseDodge;
             HudDraggableToggle.IsChecked = cfg.HudDraggable;
-            HoldEShowHudCheck.IsChecked = cfg.HoldEShowHud;
+            WorkAssistShowHudCheck.IsChecked = cfg.WorkAssistShowHud;
 
             // Restore HUD preset combo selection
             SetHudPresetCombo(cfg.HudPreset);
 
-            if (cfg.HoldEEnabled) { _featureManager.Toggle(_holdE); HoldEToggle.IsChecked = true; }
+            if (cfg.WorkAssistEnabled) { _featureManager.Toggle(_workAssist); WorkAssistToggle.IsChecked = true; }
             if (cfg.SprintEnabled) { _featureManager.Toggle(_sprint); SprintToggle.IsChecked = true; }
 
             // ── Listen for rebind keypresses ──
@@ -226,8 +226,8 @@ namespace PalAssist
             uint menuVk = KeyHelper.ToVk(cfg.HotkeyMenu);
             if (menuVk != 0) _menuHotkeyId = _hotkeyManager.Register(menuVk, 0, OnMenuHotkeyPressed);
 
-            uint holdEVk = KeyHelper.ToVk(cfg.HotkeyHoldE);
-            if (holdEVk != 0) _holdEHotkeyId = _hotkeyManager.Register(holdEVk, 0, OnHoldEHotkeyPressed);
+            uint workAssistVk = KeyHelper.ToVk(cfg.HotkeyWorkAssist);
+            if (workAssistVk != 0) _workAssistHotkeyId = _hotkeyManager.Register(workAssistVk, 0, OnWorkAssistHotkeyPressed);
 
             uint sprintVk = KeyHelper.ToVk(cfg.HotkeySprint);
             if (sprintVk != 0) _sprintHotkeyId = _hotkeyManager.Register(sprintVk, 0, OnSprintHotkeyPressed);
@@ -241,14 +241,14 @@ namespace PalAssist
             var cfg = _configManager.Config;
 
             RebindMenuBtn.Content    = cfg.HotkeyMenu;
-            RebindHoldEBtn.Content   = cfg.HotkeyHoldE;
+            RebindWorkAssistBtn.Content   = cfg.HotkeyWorkAssist;
             RebindSprintBtn.Content  = cfg.HotkeySprint;
 
-            HoldESubtitle.Text   = $"Continuously holds the E key  ·  Hotkey: {cfg.HotkeyHoldE}";
+            WorkAssistSubtitle.Text   = $"Continuously holds the F key  ·  Hotkey: {cfg.HotkeyWorkAssist}";
             SprintSubtitle.Text  = $"Auto forward + sprint cycles  ·  Hotkey: {cfg.HotkeySprint}";
 
             FooterMenuKey.Text   = cfg.HotkeyMenu;
-            FooterHoldEKey.Text  = cfg.HotkeyHoldE;
+            FooterWorkAssistKey.Text  = cfg.HotkeyWorkAssist;
             FooterSprintKey.Text = cfg.HotkeySprint;
         }
 
@@ -264,11 +264,11 @@ namespace PalAssist
             if (_menuVisible) CentreMenuIfNeeded();
         }
 
-        private void OnHoldEHotkeyPressed()
+        private void OnWorkAssistHotkeyPressed()
         {
-            if (_holdE == null || _featureManager == null) return;
-            _featureManager.Toggle(_holdE);
-            HoldEToggle.IsChecked = _holdE.IsEnabled;
+            if (_workAssist == null || _featureManager == null) return;
+            _featureManager.Toggle(_workAssist);
+            WorkAssistToggle.IsChecked = _workAssist.IsEnabled;
         }
 
         private void OnSprintHotkeyPressed()
@@ -283,13 +283,13 @@ namespace PalAssist
         // ─────────────────────────────────────────────────
 
         private void RebindMenuBtn_Click(object s, RoutedEventArgs e)   => StartRebind("menu");
-        private void RebindHoldEBtn_Click(object s, RoutedEventArgs e)  => StartRebind("holdE");
+        private void RebindWorkAssistBtn_Click(object s, RoutedEventArgs e)  => StartRebind("workAssist");
         private void RebindSprintBtn_Click(object s, RoutedEventArgs e) => StartRebind("sprint");
 
         private void StartRebind(string target)
         {
             _rebindTarget = target;
-            var btn = target switch { "menu" => RebindMenuBtn, "holdE" => RebindHoldEBtn, _ => RebindSprintBtn };
+            var btn = target switch { "menu" => RebindMenuBtn, "workAssist" => RebindWorkAssistBtn, _ => RebindSprintBtn };
             btn.Content = "Press a key…";
 
             // Temporarily allow the overlay to be activated/focused so PreviewKeyDown fires.
@@ -339,7 +339,7 @@ namespace PalAssist
             string savedTarget = _rebindTarget!;
 
             ref int id = ref _menuHotkeyId;
-            if (savedTarget == "holdE")  id = ref _holdEHotkeyId;
+            if (savedTarget == "workAssist")  id = ref _workAssistHotkeyId;
             if (savedTarget == "sprint") id = ref _sprintHotkeyId;
 
             // Restore WS_EX_NOACTIVATE BEFORE re-registering so hotkey fires correctly
@@ -355,7 +355,7 @@ namespace PalAssist
             Action cb = target switch
             {
                 "menu"  => OnMenuHotkeyPressed,
-                "holdE" => OnHoldEHotkeyPressed,
+                "workAssist" => OnWorkAssistHotkeyPressed,
                 _       => OnSprintHotkeyPressed
             };
             hotkeyId = _hotkeyManager.Register(newVk, 0, cb);
@@ -363,7 +363,7 @@ namespace PalAssist
             switch (target)
             {
                 case "menu":   _configManager.Config.HotkeyMenu   = newName; break;
-                case "holdE":  _configManager.Config.HotkeyHoldE  = newName; break;
+                case "workAssist":  _configManager.Config.HotkeyWorkAssist  = newName; break;
                 case "sprint": _configManager.Config.HotkeySprint = newName; break;
             }
             _configManager.Save();
@@ -412,11 +412,11 @@ namespace PalAssist
         //  Feature UI event handlers
         // ─────────────────────────────────────────────────
 
-        private void HoldEToggle_Changed(object s, RoutedEventArgs e)
+        private void WorkAssistToggle_Changed(object s, RoutedEventArgs e)
         {
-            if (_holdE == null || _featureManager == null) return;
-            bool want = HoldEToggle.IsChecked == true;
-            if (want != _holdE.IsEnabled) _featureManager.Toggle(_holdE);
+            if (_workAssist == null || _featureManager == null) return;
+            bool want = WorkAssistToggle.IsChecked == true;
+            if (want != _workAssist.IsEnabled) _featureManager.Toggle(_workAssist);
         }
 
         private void SprintToggle_Changed(object s, RoutedEventArgs e)
@@ -471,10 +471,10 @@ namespace PalAssist
             _configManager.Config.HudDraggable = HudDraggableToggle.IsChecked == true;
         }
 
-        private void HoldEShowHudCheck_Changed(object s, RoutedEventArgs e)
+        private void WorkAssistShowHudCheck_Changed(object s, RoutedEventArgs e)
         {
             if (_configManager == null) return;
-            _configManager.Config.HoldEShowHud = HoldEShowHudCheck.IsChecked == true;
+            _configManager.Config.WorkAssistShowHud = WorkAssistShowHudCheck.IsChecked == true;
             UpdateHud();
         }
 
@@ -484,14 +484,14 @@ namespace PalAssist
 
             // In-memory update of current values from UI
             var cfg = _configManager.Config;
-            if (_holdE != null) cfg.HoldEEnabled = _holdE.IsEnabled;
+            if (_workAssist != null) cfg.WorkAssistEnabled = _workAssist.IsEnabled;
             if (_sprint != null) cfg.SprintEnabled = _sprint.IsEnabled;
             
             cfg.SprintDuration = SprintDurSlider.Value;
             cfg.RecoveryDuration = RecoveryDurSlider.Value;
             cfg.SprintPauseDodge = PauseDodgeCheck.IsChecked == true;
             cfg.HudDraggable = HudDraggableToggle.IsChecked == true;
-            cfg.HoldEShowHud = HoldEShowHudCheck.IsChecked == true;
+            cfg.WorkAssistShowHud = WorkAssistShowHudCheck.IsChecked == true;
 
             if (HudPresetCombo.SelectedItem != null)
             {
@@ -553,7 +553,7 @@ namespace PalAssist
 
                 if (_configManager != null)
                 {
-                    if (_holdE != null)  _configManager.Config.HoldEEnabled  = false;
+                    if (_workAssist != null)  _configManager.Config.WorkAssistEnabled  = false;
                     if (_sprint != null) _configManager.Config.SprintEnabled = false;
                     _configManager.Config.MenuX = Canvas.GetLeft(MenuPanel);
                     _configManager.Config.MenuY = Canvas.GetTop(MenuPanel);
@@ -708,13 +708,13 @@ namespace PalAssist
 
         private void SyncUI()
         {
-            if (_holdE != null)
+            if (_workAssist != null)
             {
-                bool on = _holdE.IsEnabled;
-                HoldEDot.Fill = on
+                bool on = _workAssist.IsEnabled;
+                WorkAssistDot.Fill = on
                     ? (SolidColorBrush)FindResource("AccentGreenBrush")
                     : (SolidColorBrush)FindResource("AccentRedBrush");
-                HoldEToggle.IsChecked = on;
+                WorkAssistToggle.IsChecked = on;
             }
             if (_sprint != null)
             {
@@ -752,10 +752,10 @@ namespace PalAssist
 
             bool anyActive = false;
 
-            if (_holdE != null && _holdE.IsEnabled && (_configManager == null || _configManager.Config.HoldEShowHud))
+            if (_workAssist != null && _workAssist.IsEnabled && (_configManager == null || _configManager.Config.WorkAssistShowHud))
             {
                 anyActive = true;
-                AddHudRow("Hold E", "Active", (SolidColorBrush)FindResource("AccentGreenBrush"));
+                AddHudRow("Work Assist", "Active", (SolidColorBrush)FindResource("AccentGreenBrush"));
             }
 
             if (_sprint != null && _sprint.IsEnabled)
@@ -948,7 +948,7 @@ namespace PalAssist
 
             if (_configManager != null)
             {
-                if (_holdE != null)  _configManager.Config.HoldEEnabled  = _holdE.IsEnabled;
+                if (_workAssist != null)  _configManager.Config.WorkAssistEnabled  = _workAssist.IsEnabled;
                 if (_sprint != null) _configManager.Config.SprintEnabled = _sprint.IsEnabled;
                 _configManager.Config.MenuX = Canvas.GetLeft(MenuPanel);
                 _configManager.Config.MenuY = Canvas.GetTop(MenuPanel);
