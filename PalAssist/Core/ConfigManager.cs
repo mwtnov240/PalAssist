@@ -29,12 +29,16 @@ namespace PalAssist.Core
         /// <summary>Full path to the on-disk config file.</summary>
         public string PathOnDisk => ConfigPath;
 
+        /// <summary>True if config.json existed when <see cref="Load"/> ran (upgrade vs fresh install).</summary>
+        public bool ConfigFileExistedOnLoad { get; private set; }
+
         /// <summary>
         /// Load config from disk. If the file doesn't exist, returns defaults.
         /// </summary>
         public void Load()
         {
-            if (!File.Exists(ConfigPath))
+            ConfigFileExistedOnLoad = File.Exists(ConfigPath);
+            if (!ConfigFileExistedOnLoad)
             {
                 Config = new AppConfig();
                 return;
@@ -44,12 +48,17 @@ namespace PalAssist.Core
             {
                 string json = File.ReadAllText(ConfigPath);
                 Config = JsonSerializer.Deserialize<AppConfig>(json, JsonOptions) ?? new AppConfig();
+                // Upgrading users: don't auto-force the setup wizard
+                if (!Config.BetaSetupWizardCompleted)
+                    Config.BetaSetupWizardCompleted = true;
                 if (MigrateLegacyHoldEKeys(json, Config))
                     Save();
             }
             catch
             {
                 Config = new AppConfig();
+                // Treat corrupt file as existing user — no wizard spam
+                Config.BetaSetupWizardCompleted = true;
             }
         }
 
@@ -184,6 +193,50 @@ namespace PalAssist.Core
         // ── Updates ──
         [JsonPropertyName("auto_check_updates")]
         public bool AutoCheckUpdates { get; set; } = true;
+
+        // ── Crosshair ──
+        [JsonPropertyName("crosshair_enabled")]
+        public bool CrosshairEnabled { get; set; } = false;
+
+        /// <summary>Dot | Plus | X</summary>
+        [JsonPropertyName("crosshair_style")]
+        public string CrosshairStyle { get; set; } = "Dot";
+
+        /// <summary>Small | Medium | Large</summary>
+        [JsonPropertyName("crosshair_size")]
+        public string CrosshairSize { get; set; } = "Medium";
+
+        /// <summary>White | Cyan | Red | Green | Yellow</summary>
+        [JsonPropertyName("crosshair_color")]
+        public string CrosshairColor { get; set; } = "White";
+
+        // ── Beta (experimental; off by default) ──
+        /// <summary>When false, Beta tab is hidden and beta features stay disabled.</summary>
+        [JsonPropertyName("beta_enabled")]
+        public bool BetaEnabled { get; set; } = false;
+
+        [JsonPropertyName("beta_focusLock")]
+        public bool BetaFocusLock { get; set; } = false;
+
+        [JsonPropertyName("beta_profileWorkEnabled")]
+        public bool BetaProfileWorkEnabled { get; set; } = false;
+
+        [JsonPropertyName("beta_activeProfile")]
+        public string BetaActiveProfile { get; set; } = "Interact";
+
+        /// <summary>Comma-separated key names for Custom profile, e.g. "W,F".</summary>
+        [JsonPropertyName("beta_customKeys")]
+        public string BetaCustomKeys { get; set; } = "F";
+
+        [JsonPropertyName("beta_setupWizardCompleted")]
+        public bool BetaSetupWizardCompleted { get; set; } = false;
+
+        /// <summary>Minutes between session reminders. 0 = off.</summary>
+        [JsonPropertyName("beta_sessionRemindMinutes")]
+        public int BetaSessionRemindMinutes { get; set; } = 30;
+
+        [JsonPropertyName("beta_sessionAutoStopAssists")]
+        public bool BetaSessionAutoStopAssists { get; set; } = false;
     }
 
     /// <summary>
