@@ -82,13 +82,13 @@ Output: `PalAssist\bin\Release\net8.0-windows\PalAssist.exe`
 
 ## Auto-update
 
-On startup (when `auto_check_updates` is true), PalAssist queries the latest [GitHub Release](https://github.com/mwtnov240/PalAssist/releases) and downloads a newer build in the background. Your settings (`config.json`) are kept; only the executable is replaced.
+On startup (when `auto_check_updates` is true), PalAssist checks the latest [GitHub Release](https://github.com/mwtnov240/PalAssist/releases) and **asks** if you want to download and install. Your settings (`config.json`) are kept; only the executable is replaced.
 
-1. Open **Settings → About** to see version / status.
-2. Click **Check for Updates** anytime.
-3. When ready, click **Install & Restart** (disables assists, saves config, swaps the exe, relaunches).
+1. On boot: if an update exists → **Yes/No** prompt to install now.
+2. Open **Settings → About** anytime → **Check for Updates** (same prompt if available).
+3. **Install & Restart** appears after a staged download if you deferred earlier.
 
-Updates are **not** force-applied mid-game — you choose when to restart.
+Updates are never force-installed without your confirmation.
 
 ### Publishing a new update (for maintainers)
 

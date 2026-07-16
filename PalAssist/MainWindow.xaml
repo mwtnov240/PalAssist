@@ -420,24 +420,20 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- ── Save Settings Button ── -->
+                    <!-- ── Save Settings Button (disabled for now — settings still auto-save) ── -->
                     <Button x:Name="SaveSettingsBtn" Margin="14,2,14,6" Height="34"
-                            Content="Save Settings" Style="{StaticResource RebindBtnStyle}"
-                            Background="#0F3460" Foreground="{StaticResource TextPrimaryBrush}"
-                            BorderThickness="0" Click="SaveSettingsBtn_Click">
+                            Content="Save Settings (Coming Soon)"
+                            IsEnabled="False"
+                            Background="#2A2A3E" Foreground="#666680"
+                            BorderThickness="0" Opacity="0.65"
+                            ToolTip="Coming soon — settings already save automatically">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
                                 <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                        CornerRadius="10">
+                                        CornerRadius="10" Opacity="{TemplateBinding Opacity}">
                                     <ContentPresenter HorizontalAlignment="Center"
                                                       VerticalAlignment="Center"/>
                                 </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Bd" Property="Background" Value="#00D2FF"/>
-                                        <Setter Property="Foreground" Value="#16213E"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
                             </ControlTemplate>
                         </Button.Template>
                     </Button>

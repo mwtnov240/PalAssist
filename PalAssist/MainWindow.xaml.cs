@@ -169,9 +169,10 @@ namespace PalAssist
             InstallUpdateBtn.Visibility = Visibility.Collapsed;
             InstallUpdateBtn.IsEnabled = false;
 
+            // Always auto-check on boot; prompt before download/install
             if (cfg.AutoCheckUpdates)
             {
-                _ = RunUpdateCheckAsync(downloadIfAvailable: true, userInitiated: false);
+                _ = BootUpdateCheckAsync();
             }
         }
 
@@ -478,43 +479,8 @@ namespace PalAssist
             UpdateHud();
         }
 
-        private async void SaveSettingsBtn_Click(object s, RoutedEventArgs e)
-        {
-            if (_configManager == null) return;
-
-            // In-memory update of current values from UI
-            var cfg = _configManager.Config;
-            if (_workAssist != null) cfg.WorkAssistEnabled = _workAssist.IsEnabled;
-            if (_sprint != null) cfg.SprintEnabled = _sprint.IsEnabled;
-            
-            cfg.SprintDuration = SprintDurSlider.Value;
-            cfg.RecoveryDuration = RecoveryDurSlider.Value;
-            cfg.SprintPauseDodge = PauseDodgeCheck.IsChecked == true;
-            cfg.HudDraggable = HudDraggableToggle.IsChecked == true;
-            cfg.WorkAssistShowHud = WorkAssistShowHudCheck.IsChecked == true;
-
-            if (HudPresetCombo.SelectedItem != null)
-            {
-                cfg.HudPreset = ((ComboBoxItem)HudPresetCombo.SelectedItem).Content.ToString()!.Replace("-", "");
-            }
-
-            // Write to config.json
-            _configManager.Save();
-
-            // Visual feedback on button
-            SaveSettingsBtn.Content = "Settings Saved! ✓";
-            SaveSettingsBtn.IsEnabled = false;
-            SaveSettingsBtn.Background = (SolidColorBrush)FindResource("AccentGreenBrush");
-            SaveSettingsBtn.Foreground = Brushes.White;
-
-            await System.Threading.Tasks.Task.Delay(1500);
-
-            // Restore original styles explicitly (avoiding ClearValue transparency fallbacks)
-            SaveSettingsBtn.Content = "Save Settings";
-            SaveSettingsBtn.IsEnabled = true;
-            SaveSettingsBtn.Background = (SolidColorBrush)FindResource("AccentBlueBrush");
-            SaveSettingsBtn.Foreground = (SolidColorBrush)FindResource("TextPrimaryBrush");
-        }
+        // Save Settings is intentionally disabled for now (UI shows greyed out).
+        // Settings continue to auto-save on change / close.
 
         private void SetHudPresetCombo(string preset)
         {
@@ -535,10 +501,115 @@ namespace PalAssist
 
         private async void UpdateBtn_Click(object s, RoutedEventArgs e)
         {
-            await RunUpdateCheckAsync(downloadIfAvailable: true, userInitiated: true);
+            // Manual check: look for update, then prompt to download & install
+            await RunUpdateCheckAsync(downloadIfAvailable: false, userInitiated: true);
+            if (_updateService?.PendingUpdate is { Success: true, UpdateAvailable: true } pending
+                && !_updateService.IsStaged)
+            {
+                bool yes = PromptInstallUpdate(pending.LatestVersion);
+                if (yes)
+                    await DownloadAndInstallNowAsync();
+            }
+            else if (_updateService?.IsStaged == true)
+            {
+                bool yes = PromptInstallUpdate(_updateService.PendingUpdate?.LatestVersion ?? "?");
+                if (yes)
+                    ApplyStagedUpdateAndRestart();
+            }
         }
 
         private void InstallUpdateBtn_Click(object s, RoutedEventArgs e)
+        {
+            ApplyStagedUpdateAndRestart();
+        }
+
+        /// <summary>
+        /// On boot: check for updates (no silent download). If available, ask the user.
+        /// </summary>
+        private async Task BootUpdateCheckAsync()
+        {
+            await RunUpdateCheckAsync(downloadIfAvailable: false, userInitiated: false);
+            if (_updateService?.PendingUpdate is not { Success: true, UpdateAvailable: true } pending)
+                return;
+
+            bool yes = PromptInstallUpdate(pending.LatestVersion);
+            if (yes)
+                await DownloadAndInstallNowAsync();
+            else
+                SetUpdateStatus($"v{pending.LatestVersion} available — use Check for Updates when ready.");
+        }
+
+        private bool PromptInstallUpdate(string version)
+        {
+            var result = MessageBox.Show(
+                this,
+                $"PalAssist v{version} is available.\n\nDownload and install now?\n(The app will restart after installing.)",
+                "Update Available",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            return result == MessageBoxResult.Yes;
+        }
+
+        private async Task DownloadAndInstallNowAsync()
+        {
+            if (_updateService == null) return;
+
+            _updateInProgress = true;
+            _updateCts?.Cancel();
+            _updateCts = new CancellationTokenSource();
+            var ct = _updateCts.Token;
+
+            try
+            {
+                UpdateBtn.IsEnabled = false;
+                UpdateBtn.Content = "Downloading…";
+                SetUpdateStatus("Downloading update…");
+
+                var progress = new Progress<double>(p =>
+                {
+                    _ = Dispatcher.InvokeAsync(() =>
+                    {
+                        UpdateBtn.Content = "Downloading…";
+                        SetUpdateStatus($"Downloading update… {p:0}%");
+                    });
+                });
+
+                // Ensure we have release metadata
+                if (_updateService.PendingUpdate is not { UpdateAvailable: true })
+                {
+                    var check = await _updateService.CheckForUpdateAsync(ct).ConfigureAwait(true);
+                    if (!check.Success || !check.UpdateAvailable)
+                    {
+                        ApplyUpdateUi(check);
+                        return;
+                    }
+                }
+
+                var result = await _updateService.DownloadAndStageAsync(progress, ct).ConfigureAwait(true);
+                ApplyUpdateUi(result);
+
+                if (result.Success && (result.Staged || _updateService.IsStaged))
+                    ApplyStagedUpdateAndRestart();
+            }
+            catch (OperationCanceledException)
+            {
+                SetUpdateStatus("Update download cancelled.");
+                UpdateBtn.Content = "Check for Updates";
+                UpdateBtn.IsEnabled = true;
+            }
+            catch (Exception ex)
+            {
+                SetUpdateStatus($"Download failed: {ex.Message}");
+                UpdateBtn.Content = "Check for Updates";
+                UpdateBtn.IsEnabled = true;
+            }
+            finally
+            {
+                _updateInProgress = false;
+            }
+        }
+
+        private void ApplyStagedUpdateAndRestart()
         {
             if (_updateService == null || !_updateService.IsStaged)
             {
@@ -548,7 +619,6 @@ namespace PalAssist
 
             try
             {
-                // Clean shutdown of assists so keys are released before replace
                 _featureManager?.DisableAll();
 
                 if (_configManager != null)
@@ -599,13 +669,10 @@ namespace PalAssist
 
             try
             {
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    UpdateBtn.IsEnabled = false;
-                    UpdateBtn.Content = "Checking…";
-                    if (userInitiated || string.IsNullOrEmpty(UpdateStatusText.Text))
-                        SetUpdateStatus("Checking for updates…");
-                });
+                UpdateBtn.IsEnabled = false;
+                UpdateBtn.Content = "Checking…";
+                if (userInitiated || string.IsNullOrEmpty(UpdateStatusText.Text))
+                    SetUpdateStatus("Checking for updates…");
 
                 UpdateCheckResult result;
                 if (downloadIfAvailable)
@@ -619,7 +686,6 @@ namespace PalAssist
                         });
                     });
 
-                    // Check first so we can show "up to date" without downloading
                     result = await _updateService.CheckForUpdateAsync(ct).ConfigureAwait(true);
                     if (result.Success && result.UpdateAvailable)
                     {
@@ -682,8 +748,8 @@ namespace PalAssist
 
             if (result.UpdateAvailable)
             {
-                SetUpdateStatus($"v{result.LatestVersion} available. Click Check to download.");
-                UpdateBtn.Content = "Download Update";
+                SetUpdateStatus($"v{result.LatestVersion} available.");
+                UpdateBtn.Content = "Check for Updates";
                 UpdateBtn.IsEnabled = true;
                 InstallUpdateBtn.Visibility = Visibility.Collapsed;
                 InstallUpdateBtn.IsEnabled = false;
