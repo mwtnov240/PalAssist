@@ -68,9 +68,11 @@ namespace PalAssist
         {
             _hwnd = new WindowInteropHelper(this).Handle;
 
-            // Tool window, no-activate, initially click-through
+            // No-activate (don't steal game focus). Do NOT set WS_EX_TOOLWINDOW —
+            // that hides the app from the taskbar. Initially click-through.
             int exStyle = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
-            exStyle |= NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_NOACTIVATE;
+            exStyle |= NativeMethods.WS_EX_NOACTIVATE;
+            exStyle &= ~NativeMethods.WS_EX_TOOLWINDOW;
             NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
             SetClickThrough(true);
 
@@ -164,7 +166,7 @@ namespace PalAssist
 
             // ── Updates ──
             _updateService = new UpdateService();
-            VersionText.Text = $"PalAssist v{UpdateService.GetCurrentVersion()}";
+            RefreshVersionLabels();
             UpdateStatusText.Text = "";
             InstallUpdateBtn.Visibility = Visibility.Collapsed;
             InstallUpdateBtn.IsEnabled = false;
@@ -174,6 +176,17 @@ namespace PalAssist
             {
                 _ = BootUpdateCheckAsync();
             }
+        }
+
+        /// <summary>
+        /// Keep header, About, and taskbar title on the same assembly version.
+        /// </summary>
+        private void RefreshVersionLabels()
+        {
+            string v = UpdateService.GetCurrentVersion();
+            HeaderVersionText.Text = $"v{v} — External Input Assist";
+            VersionText.Text = $"PalAssist v{v}";
+            Title = $"PalAssist v{v}";
         }
 
         // ─────────────────────────────────────────────────
@@ -724,7 +737,7 @@ namespace PalAssist
 
         private void ApplyUpdateUi(UpdateCheckResult result)
         {
-            VersionText.Text = $"PalAssist v{UpdateService.GetCurrentVersion()}";
+            RefreshVersionLabels();
 
             if (!result.Success)
             {
