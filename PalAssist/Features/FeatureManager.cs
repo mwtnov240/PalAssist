@@ -13,9 +13,13 @@ namespace PalAssist.Features
         private readonly List<IFeature> _features = new();
         private readonly System.Timers.Timer _tickTimer;
         private bool _disposed;
+        private bool _inputSuspended;
 
         /// <summary>Read-only view of all registered features.</summary>
         public IReadOnlyList<IFeature> Features => _features;
+
+        /// <summary>True when all features have input suspended (focus-lock).</summary>
+        public bool IsInputSuspended => _inputSuspended;
 
         /// <summary>Raised whenever any feature's enabled state changes.</summary>
         public event Action? StateChanged;
@@ -46,7 +50,12 @@ namespace PalAssist.Features
             if (feature.IsEnabled)
                 feature.OnDisable();
             else
+            {
                 feature.OnEnable();
+                // If global focus-lock has input suspended, immediately release keys
+                if (_inputSuspended)
+                    feature.SuspendInput();
+            }
 
             StateChanged?.Invoke();
         }
@@ -62,11 +71,32 @@ namespace PalAssist.Features
             StateChanged?.Invoke();
         }
 
-        private void OnTick(object? sender, ElapsedEventArgs e)
+        /// <summary>
+        /// Suspend or resume input for all enabled features without clearing toggles.
+        /// Used by Beta focus-lock when Palworld loses/gains foreground focus.
+        /// </summary>
+        public void SetInputSuspended(bool suspended)
         {
+            if (_inputSuspended == suspended) return;
+            _inputSuspended = suspended;
+
             foreach (var f in _features)
             {
-                if (f.IsEnabled)
+                if (!f.IsEnabled) continue;
+                if (suspended)
+                    f.SuspendInput();
+                else
+                    f.ResumeInput();
+            }
+        }
+
+        private void OnTick(object? sender, ElapsedEventArgs e)
+        {
+            if (_inputSuspended) return;
+
+            foreach (var f in _features)
+            {
+                if (f.IsEnabled && !f.IsInputSuspended)
                     f.Update();
             }
         }

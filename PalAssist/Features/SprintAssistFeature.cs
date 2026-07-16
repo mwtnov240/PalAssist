@@ -20,6 +20,7 @@ namespace PalAssist.Features
         public string Name        => "Sprint Assist";
         public string Description => "Auto walks forward and manages sprint/walk cycles.";
         public bool   IsEnabled   { get; private set; }
+        public bool   IsInputSuspended { get; private set; }
 
         // ── Configurable parameters (set from UI before enabling) ──
         public double SprintDurationSec  { get; set; } = 8.0;
@@ -49,6 +50,7 @@ namespace PalAssist.Features
         public void OnEnable()
         {
             IsEnabled = true;
+            IsInputSuspended = false;
 
             // Start holding W immediately
             InputSimulator.KeyDown(NativeMethods.SCAN_W);
@@ -60,6 +62,7 @@ namespace PalAssist.Features
         public void OnDisable()
         {
             IsEnabled = false;
+            IsInputSuspended = false;
 
             // Release ALL keys we might be holding
             InputSimulator.KeyUp(NativeMethods.SCAN_SHIFT);
@@ -70,12 +73,42 @@ namespace PalAssist.Features
             _dodgeTimer.Stop();
         }
 
+        public void SuspendInput()
+        {
+            if (!IsEnabled || IsInputSuspended) return;
+            IsInputSuspended = true;
+            InputSimulator.KeyUp(NativeMethods.SCAN_SHIFT);
+            InputSimulator.KeyUp(NativeMethods.SCAN_W);
+            _phaseTimer.Stop();
+            _dodgeTimer.Stop();
+        }
+
+        public void ResumeInput()
+        {
+            if (!IsEnabled || !IsInputSuspended) return;
+            IsInputSuspended = false;
+
+            // Resume cycling from sprint phase with W held
+            InputSimulator.KeyDown(NativeMethods.SCAN_W);
+            if (State == SprintState.Idle)
+                EnterState(SprintState.Sprinting);
+            else
+            {
+                // Re-enter current phase timers so sprint/recovery continues
+                if (State == SprintState.Sprinting)
+                    InputSimulator.KeyDown(NativeMethods.SCAN_SHIFT);
+                _phaseTimer.Restart();
+            }
+        }
+
         // ─────────────────────────────────────────────
         //  Update (called ~60 Hz by FeatureManager)
         // ─────────────────────────────────────────────
 
         public void Update()
         {
+            if (!IsEnabled || IsInputSuspended) return;
+
             // ── Dodge pause detection ──
             if (PauseDodge && State != SprintState.DodgePausing)
             {

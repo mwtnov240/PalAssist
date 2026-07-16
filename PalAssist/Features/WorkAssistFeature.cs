@@ -16,6 +16,7 @@ namespace PalAssist.Features
         public string Name        => "Work Assist";
         public string Description => "Continuously holds the F key for work/interactions.";
         public bool   IsEnabled   { get; private set; }
+        public bool   IsInputSuspended { get; private set; }
 
         // Safety re-hold if something released F (focus loss, etc.) — not every frame
         private readonly Stopwatch _reassertTimer = new();
@@ -24,6 +25,7 @@ namespace PalAssist.Features
         public void OnEnable()
         {
             IsEnabled = true;
+            IsInputSuspended = false;
             PressF();
             _reassertTimer.Restart();
         }
@@ -31,13 +33,30 @@ namespace PalAssist.Features
         public void OnDisable()
         {
             IsEnabled = false;
+            IsInputSuspended = false;
             ReleaseF();
             _reassertTimer.Reset();
         }
 
+        public void SuspendInput()
+        {
+            if (!IsEnabled || IsInputSuspended) return;
+            IsInputSuspended = true;
+            ReleaseF();
+            _reassertTimer.Reset();
+        }
+
+        public void ResumeInput()
+        {
+            if (!IsEnabled || !IsInputSuspended) return;
+            IsInputSuspended = false;
+            PressF();
+            _reassertTimer.Restart();
+        }
+
         public void Update()
         {
-            if (!IsEnabled) return;
+            if (!IsEnabled || IsInputSuspended) return;
 
             // If F is still held according to the OS, leave it alone.
             bool fDown = NativeMethods.IsKeyDown(NativeMethods.VK_F);

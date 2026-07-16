@@ -46,12 +46,23 @@ namespace PalAssist.Win32
         [DllImport("user32.dll")]
         public static extern IntPtr GetForegroundWindow();
 
+        /// <summary>
+        /// Shows or hides the cursor. Returns the new display counter
+        /// (visible when counter &gt;= 0). Each call adjusts an internal ref-count.
+        /// </summary>
+        [DllImport("user32.dll")]
+        public static extern int ShowCursor([MarshalAs(UnmanagedType.Bool)] bool bShow);
+
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool IsWindow(IntPtr hWnd);
 
         [StructLayout(LayoutKind.Sequential)]
         public struct RECT
@@ -60,6 +71,52 @@ namespace PalAssist.Win32
             public int Top;
             public int Right;
             public int Bottom;
+        }
+
+        // ───────────────────────────────────────────────
+        //  Process path (for launcher platform detection)
+        // ───────────────────────────────────────────────
+
+        public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr OpenProcess(uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, uint dwProcessId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool CloseHandle(IntPtr hObject);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool QueryFullProcessImageName(
+            IntPtr hProcess,
+            uint dwFlags,
+            System.Text.StringBuilder lpExeName,
+            ref uint lpdwSize);
+
+        /// <summary>
+        /// Returns the full executable path for a process id, or null on failure.
+        /// </summary>
+        public static string? TryGetProcessImagePath(uint processId)
+        {
+            IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+            if (handle == IntPtr.Zero) return null;
+            try
+            {
+                var sb = new System.Text.StringBuilder(1024);
+                uint size = (uint)sb.Capacity;
+                if (!QueryFullProcessImageName(handle, 0, sb, ref size) || size == 0)
+                    return null;
+                return sb.ToString(0, (int)size);
+            }
+            catch
+            {
+                return null;
+            }
+            finally
+            {
+                CloseHandle(handle);
+            }
         }
 
         // ───────────────────────────────────────────────

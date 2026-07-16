@@ -19,6 +19,12 @@ namespace PalAssist.Features
         /// <summary>Whether the feature is currently active.</summary>
         bool IsEnabled { get; }
 
+        /// <summary>
+        /// True when input is temporarily released (e.g. focus-lock / alt-tab)
+        /// without clearing <see cref="IsEnabled"/>.
+        /// </summary>
+        bool IsInputSuspended { get; }
+
         /// <summary>Called once when the feature is turned on.</summary>
         void OnEnable();
 
@@ -26,8 +32,18 @@ namespace PalAssist.Features
         void OnDisable();
 
         /// <summary>
-        /// Called on every update tick (~60 Hz) while the feature is enabled.
-        /// Use this for continuous actions like holding a key.
+        /// Release held keys but keep the feature enabled (focus-lock).
+        /// </summary>
+        void SuspendInput();
+
+        /// <summary>
+        /// Re-assert held keys after <see cref="SuspendInput"/> if still enabled.
+        /// </summary>
+        void ResumeInput();
+
+        /// <summary>
+        /// Called on every update tick (~60 Hz) while the feature is enabled
+        /// and not suspended. Use this for continuous actions like holding a key.
         /// </summary>
         void Update();
     }

@@ -1,16 +1,22 @@
 <Window x:Class="PalAssist.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PalAssist Overlay"
+        Title="PalAssist"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
         Topmost="True"
-        ShowInTaskbar="False"
+        ShowInTaskbar="True"
         WindowState="Normal"
         ResizeMode="NoResize">
 
     <Canvas x:Name="RootCanvas">
+
+        <!-- ═══════════════════════════════════════════
+             CROSSHAIR (center of overlay; never hit-tests)
+             ═══════════════════════════════════════════ -->
+        <Canvas x:Name="CrosshairCanvas" IsHitTestVisible="False"
+                Visibility="Collapsed" Width="48" Height="48"/>
 
         <!-- ═══════════════════════════════════════════
              CONSOLIDATED HUD PANEL (top-right default)
@@ -79,7 +85,8 @@
                             <TextBlock Text="PalAssist"
                                        FontFamily="Segoe UI" FontSize="20" FontWeight="Bold"
                                        Foreground="{StaticResource AccentCyanBrush}"/>
-                            <TextBlock Text="v1.0 — External Input Assist"
+                            <TextBlock x:Name="HeaderVersionText"
+                                       Text="External Input Assist"
                                        FontFamily="Segoe UI" FontSize="10"
                                        Foreground="{StaticResource TextSecondaryBrush}"
                                        Margin="0,2,0,0"/>
@@ -90,7 +97,7 @@
                                     VerticalAlignment="Center" Margin="0,0,14,0">
                             <Ellipse x:Name="GameDot" Width="8" Height="8"
                                      Fill="{StaticResource AccentRedBrush}" Margin="0,0,6,0"/>
-                            <TextBlock x:Name="GameStatusText" Text="Game not found"
+                            <TextBlock x:Name="GameStatusText" Text="Palworld not found"
                                        FontFamily="Segoe UI" FontSize="11"
                                        Foreground="{StaticResource TextSecondaryBrush}"/>
                         </StackPanel>
@@ -138,6 +145,10 @@
                         <Button x:Name="TabAI" Content="AI Assists"
                                 Style="{StaticResource TabBtnStyle}"
                                 Click="TabAI_Click"/>
+                        <Button x:Name="TabBeta" Content="Beta"
+                                Style="{StaticResource TabBtnStyle}"
+                                Visibility="Collapsed"
+                                Click="TabBeta_Click"/>
                         <Button x:Name="TabSettings" Content="Settings"
                                 Style="{StaticResource TabBtnStyle}"
                                 Click="TabSettings_Click"/>
@@ -203,8 +214,9 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- ── Sprint Assist ── -->
-                    <Border Margin="14,2,14,10" Padding="14,12" CornerRadius="10">
+                    <!-- ── Sprint Assist (disabled in v1.1; kept in tree for re-enable) ── -->
+                    <Border x:Name="SprintAssistCard" Margin="14,2,14,10" Padding="14,12" CornerRadius="10"
+                            Visibility="Collapsed">
                         <Border.Background>
                             <SolidColorBrush Color="#1A1A2E" Opacity="0.7"/>
                         </Border.Background>
@@ -294,6 +306,88 @@
                                       Unchecked="PauseDodgeCheck_Changed"/>
                         </StackPanel>
                     </Border>
+
+                    <!-- ── Crosshair ── -->
+                    <Border Margin="14,2,14,10" Padding="14,12" CornerRadius="10">
+                        <Border.Background>
+                            <SolidColorBrush Color="#1A1A2E" Opacity="0.7"/>
+                        </Border.Background>
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Crosshair"
+                                               FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Fixed center reticle over the game"
+                                               FontFamily="Segoe UI" FontSize="10"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Margin="0,3,0,0"/>
+                                </StackPanel>
+                                <ToggleButton x:Name="CrosshairToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              VerticalAlignment="Center"
+                                              Checked="CrosshairToggle_Changed"
+                                              Unchecked="CrosshairToggle_Changed"/>
+                            </Grid>
+
+                            <StackPanel x:Name="CrosshairOptionsPanel" Margin="0,10,0,0" IsEnabled="False">
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Style" FontFamily="Segoe UI" FontSize="12"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="CrosshairStyleCombo" Grid.Column="1"
+                                              Style="{StaticResource DarkCombo}" Width="120"
+                                              SelectionChanged="CrosshairOption_Changed">
+                                        <ComboBoxItem Content="Dot" IsSelected="True"/>
+                                        <ComboBoxItem Content="Plus"/>
+                                        <ComboBoxItem Content="X"/>
+                                    </ComboBox>
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Size" FontFamily="Segoe UI" FontSize="12"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="CrosshairSizeCombo" Grid.Column="1"
+                                              Style="{StaticResource DarkCombo}" Width="120"
+                                              SelectionChanged="CrosshairOption_Changed">
+                                        <ComboBoxItem Content="Small"/>
+                                        <ComboBoxItem Content="Medium" IsSelected="True"/>
+                                        <ComboBoxItem Content="Large"/>
+                                    </ComboBox>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Color" FontFamily="Segoe UI" FontSize="12"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="CrosshairColorCombo" Grid.Column="1"
+                                              Style="{StaticResource DarkCombo}" Width="120"
+                                              SelectionChanged="CrosshairOption_Changed">
+                                        <ComboBoxItem Content="White" IsSelected="True"/>
+                                        <ComboBoxItem Content="Cyan"/>
+                                        <ComboBoxItem Content="Red"/>
+                                        <ComboBoxItem Content="Green"/>
+                                        <ComboBoxItem Content="Yellow"/>
+                                    </ComboBox>
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- ════════════════════════════════════════
@@ -314,6 +408,202 @@
                                        FontFamily="Segoe UI" FontSize="12"
                                        Foreground="{StaticResource TextSecondaryBrush}"
                                        HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- ════════════════════════════════════════
+                     TAB CONTENT: Beta (experimental)
+                     ════════════════════════════════════════ -->
+                <StackPanel x:Name="PanelBeta" Visibility="Collapsed">
+
+                    <!-- Banner -->
+                    <Border Margin="14,10,14,6" Padding="12,8" CornerRadius="8">
+                        <Border.Background>
+                            <SolidColorBrush Color="#3D2A1A" Opacity="0.7"/>
+                        </Border.Background>
+                        <TextBlock Text="⚠ Experimental — stable Assists are unchanged. Test here before promote."
+                                   FontFamily="Segoe UI" FontSize="11"
+                                   Foreground="#FFB74D" TextWrapping="Wrap"/>
+                    </Border>
+
+                    <!-- Focus Lock -->
+                    <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
+                        <Border.Background>
+                            <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
+                        </Border.Background>
+                        <StackPanel>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Focus Lock" FontFamily="Segoe UI" FontSize="13"
+                                               FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Pause assists when Palworld is not focused"
+                                               FontFamily="Segoe UI" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                                <ToggleButton x:Name="BetaFocusLockToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              Checked="BetaFocusLockToggle_Changed"
+                                              Unchecked="BetaFocusLockToggle_Changed"
+                                              ToolTip="When on, held keys release on alt-tab and resume when you return to the game"/>
+                            </Grid>
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse x:Name="BetaFocusDot" Width="8" Height="8" Margin="0,0,6,0"
+                                         Fill="{StaticResource AccentRedBrush}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="BetaFocusStatusText" Text="Focus lock off"
+                                           FontFamily="Segoe UI" FontSize="11"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Work Profiles -->
+                    <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
+                        <Border.Background>
+                            <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
+                        </Border.Background>
+                        <StackPanel>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Work Profiles" FontFamily="Segoe UI" FontSize="13"
+                                               FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Multi-key hold (separate from Assists → Work Assist)"
+                                               FontFamily="Segoe UI" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                                <ToggleButton x:Name="BetaProfileWorkToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              Checked="BetaProfileWorkToggle_Changed"
+                                              Unchecked="BetaProfileWorkToggle_Changed"/>
+                            </Grid>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Profile" FontFamily="Segoe UI" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <ComboBox x:Name="BetaProfileCombo" Grid.Column="1"
+                                          Style="{StaticResource DarkCombo}" Width="150"
+                                          SelectionChanged="BetaProfileCombo_Changed">
+                                    <ComboBoxItem Content="Interact" Tag="Interact" IsSelected="True"/>
+                                    <ComboBoxItem Content="Forward + Interact" Tag="ForwardInteract"/>
+                                    <ComboBoxItem Content="Custom" Tag="Custom"/>
+                                </ComboBox>
+                            </Grid>
+                            <TextBlock x:Name="BetaProfileKeysText" Text="Holds: F"
+                                       FontFamily="Segoe UI" FontSize="11"
+                                       Foreground="{StaticResource AccentCyanBrush}" Margin="0,0,0,6"/>
+                            <StackPanel x:Name="BetaCustomKeysPanel" Visibility="Collapsed">
+                                <TextBlock Text="Custom keys (click to set, max 3)"
+                                           FontFamily="Segoe UI" FontSize="11"
+                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="BetaCustomKey1Btn" Content="F" Style="{StaticResource RebindBtnStyle}"
+                                            Margin="0,0,6,0" Click="BetaCustomKey1Btn_Click"/>
+                                    <Button x:Name="BetaCustomKey2Btn" Content="—" Style="{StaticResource RebindBtnStyle}"
+                                            Margin="0,0,6,0" Click="BetaCustomKey2Btn_Click"/>
+                                    <Button x:Name="BetaCustomKey3Btn" Content="—" Style="{StaticResource RebindBtnStyle}"
+                                            Click="BetaCustomKey3Btn_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                            <TextBlock x:Name="BetaProfileWarnText" Visibility="Collapsed"
+                                       Text="⚠ Assists Work Assist is also on — both may hold F"
+                                       FontFamily="Segoe UI" FontSize="10"
+                                       Foreground="#FFB74D" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Session Timer -->
+                    <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
+                        <Border.Background>
+                            <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
+                        </Border.Background>
+                        <StackPanel>
+                            <TextBlock Text="Session Timer" FontFamily="Segoe UI" FontSize="13"
+                                       FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                                       Margin="0,0,0,4"/>
+                            <TextBlock x:Name="BetaSessionElapsedText" Text="Session 00:00:00"
+                                       FontFamily="Segoe UI" FontSize="16" FontWeight="SemiBold"
+                                       Foreground="{StaticResource AccentCyanBrush}" Margin="0,0,0,8"/>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Remind every" FontFamily="Segoe UI" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <ComboBox x:Name="BetaSessionRemindCombo" Grid.Column="1"
+                                          Style="{StaticResource DarkCombo}" Width="100"
+                                          SelectionChanged="BetaSessionRemindCombo_Changed">
+                                    <ComboBoxItem Content="Off" Tag="0"/>
+                                    <ComboBoxItem Content="1 min" Tag="1"/>
+                                    <ComboBoxItem Content="15 min" Tag="15"/>
+                                    <ComboBoxItem Content="30 min" Tag="30" IsSelected="True"/>
+                                    <ComboBoxItem Content="45 min" Tag="45"/>
+                                    <ComboBoxItem Content="60 min" Tag="60"/>
+                                </ComboBox>
+                            </Grid>
+                            <CheckBox x:Name="BetaSessionAutoStopCheck"
+                                      Content="Auto-stop all assists on reminder"
+                                      Foreground="{StaticResource TextSecondaryBrush}"
+                                      FontFamily="Segoe UI" FontSize="11" Margin="0,0,0,8"
+                                      Checked="BetaSessionAutoStopCheck_Changed"
+                                      Unchecked="BetaSessionAutoStopCheck_Changed"/>
+                            <TextBlock x:Name="BetaSessionReminderText" Visibility="Collapsed"
+                                       Text="Session reminder — take a break?"
+                                       FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="#FFB74D" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Reset Timer" Style="{StaticResource RebindBtnStyle}"
+                                        Margin="0,0,8,0" Click="BetaSessionResetBtn_Click"/>
+                                <Button Content="Dismiss" Style="{StaticResource RebindBtnStyle}"
+                                        Click="BetaSessionDismissBtn_Click"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Setup Wizard -->
+                    <Border Margin="14,2,14,10" Padding="14,10" CornerRadius="10">
+                        <Border.Background>
+                            <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
+                        </Border.Background>
+                        <StackPanel>
+                            <TextBlock Text="Setup Wizard" FontFamily="Segoe UI" FontSize="13"
+                                       FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                                       Margin="0,0,0,4"/>
+                            <TextBlock Text="Rebind menu and work hotkeys step by step"
+                                       FontFamily="Segoe UI" FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8"/>
+                            <StackPanel x:Name="BetaWizardIdlePanel">
+                                <Button Content="Run Setup Wizard" Style="{StaticResource RebindBtnStyle}"
+                                        HorizontalAlignment="Left" Click="BetaWizardStartBtn_Click"/>
+                            </StackPanel>
+                            <StackPanel x:Name="BetaWizardActivePanel" Visibility="Collapsed">
+                                <TextBlock x:Name="BetaWizardStepText" Text="Step 1 of 3"
+                                           FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{StaticResource AccentCyanBrush}" Margin="0,0,0,4"/>
+                                <TextBlock x:Name="BetaWizardPromptText" Text="Press a key for Menu toggle…"
+                                           FontFamily="Segoe UI" FontSize="12"
+                                           Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"
+                                           TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="Skip" Style="{StaticResource RebindBtnStyle}"
+                                            Margin="0,0,8,0" Click="BetaWizardSkipBtn_Click"/>
+                                    <Button Content="Cancel" Style="{StaticResource RebindBtnStyle}"
+                                            Click="BetaWizardCancelBtn_Click"/>
+                                </StackPanel>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -358,8 +648,8 @@
                                         Content="F1" Style="{StaticResource RebindBtnStyle}"
                                         Click="RebindWorkAssistBtn_Click"/>
                             </Grid>
-                            <!-- Sprint Toggle -->
-                            <Grid>
+                            <!-- Sprint Toggle (disabled in v1.1) -->
+                            <Grid x:Name="SprintHotkeyRow" Visibility="Collapsed">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -420,20 +710,56 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- ── Save Settings Button (disabled for now — settings still auto-save) ── -->
+                    <!-- ── Experimental / Beta ── -->
+                    <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
+                        <Border.Background>
+                            <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
+                        </Border.Background>
+                        <StackPanel>
+                            <TextBlock Text="Experimental" FontFamily="Segoe UI" FontSize="13"
+                                       FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                                       Margin="0,0,0,8"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Enable Beta" FontFamily="Segoe UI" FontSize="12"
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    <TextBlock Text="Unlocks the Beta tab (experimental / unstable)"
+                                               FontFamily="Segoe UI" FontSize="10"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <ToggleButton x:Name="BetaEnabledToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              VerticalAlignment="Center"
+                                              Checked="BetaEnabledToggle_Changed"
+                                              Unchecked="BetaEnabledToggle_Changed"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ── Save Settings Button ── -->
                     <Button x:Name="SaveSettingsBtn" Margin="14,2,14,6" Height="34"
-                            Content="Save Settings (Coming Soon)"
-                            IsEnabled="False"
-                            Background="#2A2A3E" Foreground="#666680"
-                            BorderThickness="0" Opacity="0.65"
-                            ToolTip="Coming soon — settings already save automatically">
+                            Content="Save Settings" Style="{StaticResource RebindBtnStyle}"
+                            Background="#0F3460" Foreground="{StaticResource TextPrimaryBrush}"
+                            BorderThickness="0" Click="SaveSettingsBtn_Click"
+                            ToolTip="Write current settings to config.json">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
                                 <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                        CornerRadius="10" Opacity="{TemplateBinding Opacity}">
+                                        CornerRadius="10">
                                     <ContentPresenter HorizontalAlignment="Center"
                                                       VerticalAlignment="Center"/>
                                 </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="#00D2FF"/>
+                                        <Setter Property="Foreground" Value="#16213E"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
                             </ControlTemplate>
                         </Button.Template>
                     </Button>
@@ -482,10 +808,11 @@
                         <Run Text=" menu  ·  "/>
                         <Run x:Name="FooterWorkAssistKey" Text="F1" FontWeight="Bold"
                              Foreground="{StaticResource AccentCyanBrush}"/>
-                        <Run Text=" work  ·  "/>
-                        <Run x:Name="FooterSprintKey" Text="F2" FontWeight="Bold"
+                        <Run Text=" work"/>
+                        <Run x:Name="FooterSprintSep" Text=""/>
+                        <Run x:Name="FooterSprintKey" Text="" FontWeight="Bold"
                              Foreground="{StaticResource AccentCyanBrush}"/>
-                        <Run Text=" sprint"/>
+                        <Run x:Name="FooterSprintLabel" Text=""/>
                     </TextBlock>
                 </Border>
 
