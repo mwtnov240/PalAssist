@@ -492,8 +492,51 @@ namespace PalAssist
             UpdateHud();
         }
 
-        // Save Settings is intentionally disabled for now (UI shows greyed out).
-        // Settings continue to auto-save on change / close.
+        private async void SaveSettingsBtn_Click(object s, RoutedEventArgs e)
+        {
+            if (_configManager == null) return;
+
+            // Sync live UI / feature state into the config object before writing
+            var cfg = _configManager.Config;
+            if (_workAssist != null) cfg.WorkAssistEnabled = _workAssist.IsEnabled;
+            if (_sprint != null) cfg.SprintEnabled = _sprint.IsEnabled;
+
+            cfg.SprintDuration = SprintDurSlider.Value;
+            cfg.RecoveryDuration = RecoveryDurSlider.Value;
+            cfg.SprintPauseDodge = PauseDodgeCheck.IsChecked == true;
+            cfg.HudDraggable = HudDraggableToggle.IsChecked == true;
+            cfg.WorkAssistShowHud = WorkAssistShowHudCheck.IsChecked == true;
+            cfg.MenuX = Canvas.GetLeft(MenuPanel);
+            cfg.MenuY = Canvas.GetTop(MenuPanel);
+
+            if (HudPresetCombo.SelectedItem != null)
+            {
+                cfg.HudPreset = ((ComboBoxItem)HudPresetCombo.SelectedItem).Content.ToString()!.Replace("-", "");
+            }
+
+            bool ok = _configManager.Save();
+
+            if (ok)
+            {
+                SaveSettingsBtn.Content = "Settings Saved! ✓";
+                SaveSettingsBtn.Background = (SolidColorBrush)FindResource("AccentGreenBrush");
+                SaveSettingsBtn.Foreground = Brushes.White;
+            }
+            else
+            {
+                SaveSettingsBtn.Content = "Save Failed";
+                SaveSettingsBtn.Background = (SolidColorBrush)FindResource("AccentRedBrush");
+                SaveSettingsBtn.Foreground = Brushes.White;
+            }
+
+            SaveSettingsBtn.IsEnabled = false;
+            await Task.Delay(1500);
+
+            SaveSettingsBtn.Content = "Save Settings";
+            SaveSettingsBtn.IsEnabled = true;
+            SaveSettingsBtn.Background = (SolidColorBrush)FindResource("AccentBlueBrush");
+            SaveSettingsBtn.Foreground = (SolidColorBrush)FindResource("TextPrimaryBrush");
+        }
 
         private void SetHudPresetCombo(string preset)
         {

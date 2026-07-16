@@ -13,8 +13,21 @@ namespace PalAssist.Core
         private static readonly string ConfigPath =
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json");
 
+        /// <summary>
+        /// Must allow NaN for unset HUD/menu coordinates (double.NaN is the "use default" sentinel).
+        /// Without this, Serialize throws and Save() silently does nothing.
+        /// </summary>
+        private static readonly JsonSerializerOptions JsonOptions = new()
+        {
+            WriteIndented = true,
+            NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
+        };
+
         /// <summary>Current in-memory config.</summary>
         public AppConfig Config { get; private set; } = new();
+
+        /// <summary>Full path to the on-disk config file.</summary>
+        public string PathOnDisk => ConfigPath;
 
         /// <summary>
         /// Load config from disk. If the file doesn't exist, returns defaults.
@@ -30,7 +43,7 @@ namespace PalAssist.Core
             try
             {
                 string json = File.ReadAllText(ConfigPath);
-                Config = JsonSerializer.Deserialize<AppConfig>(json) ?? new AppConfig();
+                Config = JsonSerializer.Deserialize<AppConfig>(json, JsonOptions) ?? new AppConfig();
                 if (MigrateLegacyHoldEKeys(json, Config))
                     Save();
             }
@@ -87,18 +100,24 @@ namespace PalAssist.Core
 
         /// <summary>
         /// Persist the current config to disk.
+        /// Returns true on success; false if serialization or write fails.
         /// </summary>
-        public void Save()
+        public bool Save()
         {
             try
             {
-                var options = new JsonSerializerOptions { WriteIndented = true };
-                string json = JsonSerializer.Serialize(Config, options);
-                File.WriteAllText(ConfigPath, json);
+                string json = JsonSerializer.Serialize(Config, JsonOptions);
+                // Atomic-ish write: avoid truncated config if the process dies mid-write
+                string tempPath = ConfigPath + ".tmp";
+                File.WriteAllText(tempPath, json);
+                File.Copy(tempPath, ConfigPath, overwrite: true);
+                File.Delete(tempPath);
+                return true;
             }
             catch
             {
-                // Silently fail — overlay should not crash because of a config write error.
+                // Overlay must not crash on config I/O failure; callers may show feedback.
+                return false;
             }
         }
     }
