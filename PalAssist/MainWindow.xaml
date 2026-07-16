@@ -451,14 +451,24 @@
                             <TextBlock Text="About" FontFamily="Segoe UI" FontSize="13"
                                        FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
                                        Margin="0,0,0,6"/>
-                            <TextBlock Text="PalAssist v1.0" FontFamily="Segoe UI" FontSize="12"
+                            <TextBlock x:Name="VersionText" Text="PalAssist" FontFamily="Segoe UI" FontSize="12"
                                        Foreground="{StaticResource TextSecondaryBrush}"/>
                             <TextBlock Text="External Input Assist • No memory reading"
                                        FontFamily="Segoe UI" FontSize="10"
-                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,6"/>
-                            <Button x:Name="UpdateBtn" Content="Check for Updates"
-                                    Style="{StaticResource RebindBtnStyle}" HorizontalAlignment="Left"
-                                    Click="UpdateBtn_Click"/>
+                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,4"/>
+                            <TextBlock x:Name="UpdateStatusText" Text=""
+                                       FontFamily="Segoe UI" FontSize="10"
+                                       Foreground="{StaticResource AccentCyanBrush}"
+                                       TextWrapping="Wrap" Margin="0,0,0,6"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="UpdateBtn" Content="Check for Updates"
+                                        Style="{StaticResource RebindBtnStyle}"
+                                        Click="UpdateBtn_Click" Margin="0,0,8,0"/>
+                                <Button x:Name="InstallUpdateBtn" Content="Install &amp; Restart"
+                                        Style="{StaticResource RebindBtnStyle}"
+                                        Click="InstallUpdateBtn_Click"
+                                        Visibility="Collapsed" IsEnabled="false"/>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>

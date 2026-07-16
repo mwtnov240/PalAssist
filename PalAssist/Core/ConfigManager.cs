@@ -114,6 +114,10 @@ namespace PalAssist.Core
 
         [JsonPropertyName("hotkey_sprint")]
         public string HotkeySprint { get; set; } = "F2";
+
+        // ── Updates ──
+        [JsonPropertyName("auto_check_updates")]
+        public bool AutoCheckUpdates { get; set; } = true;
     }
 
     /// <summary>

@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -18,6 +20,9 @@ namespace PalAssist
         private WindowTracker?  _windowTracker;
         private FeatureManager? _featureManager;
         private ConfigManager?  _configManager;
+        private UpdateService?  _updateService;
+        private CancellationTokenSource? _updateCts;
+        private bool _updateInProgress;
 
         // ── Features ──
         private HoldEFeature?         _holdE;
@@ -155,6 +160,18 @@ namespace PalAssist
             else
             {
                 Dispatcher.InvokeAsync(CentreMenuIfNeeded, DispatcherPriority.Loaded);
+            }
+
+            // ── Updates ──
+            _updateService = new UpdateService();
+            VersionText.Text = $"PalAssist v{UpdateService.GetCurrentVersion()}";
+            UpdateStatusText.Text = "";
+            InstallUpdateBtn.Visibility = Visibility.Collapsed;
+            InstallUpdateBtn.IsEnabled = false;
+
+            if (cfg.AutoCheckUpdates)
+            {
+                _ = RunUpdateCheckAsync(downloadIfAvailable: true, userInitiated: false);
             }
         }
 
@@ -513,18 +530,176 @@ namespace PalAssist
         }
 
         // ─────────────────────────────────────────────────
-        //  Mock "Check for Updates" button
+        //  Auto-update (GitHub Releases)
         // ─────────────────────────────────────────────────
 
         private async void UpdateBtn_Click(object s, RoutedEventArgs e)
         {
-            UpdateBtn.Content = "Checking…";
-            UpdateBtn.IsEnabled = false;
-            await System.Threading.Tasks.Task.Delay(1500);
-            UpdateBtn.Content = "Up to date!";
-            await System.Threading.Tasks.Task.Delay(2000);
+            await RunUpdateCheckAsync(downloadIfAvailable: true, userInitiated: true);
+        }
+
+        private void InstallUpdateBtn_Click(object s, RoutedEventArgs e)
+        {
+            if (_updateService == null || !_updateService.IsStaged)
+            {
+                SetUpdateStatus("No update is ready to install.");
+                return;
+            }
+
+            try
+            {
+                // Clean shutdown of assists so keys are released before replace
+                _featureManager?.DisableAll();
+
+                if (_configManager != null)
+                {
+                    if (_holdE != null)  _configManager.Config.HoldEEnabled  = false;
+                    if (_sprint != null) _configManager.Config.SprintEnabled = false;
+                    _configManager.Config.MenuX = Canvas.GetLeft(MenuPanel);
+                    _configManager.Config.MenuY = Canvas.GetTop(MenuPanel);
+                    _configManager.Save();
+                }
+
+                SetUpdateStatus("Installing update… restarting shortly.");
+                InstallUpdateBtn.IsEnabled = false;
+                UpdateBtn.IsEnabled = false;
+
+                if (!_updateService.ApplyAndRestart())
+                {
+                    SetUpdateStatus("Could not start the updater. Try running as admin or reinstall.");
+                    UpdateBtn.IsEnabled = true;
+                    InstallUpdateBtn.IsEnabled = true;
+                    return;
+                }
+
+                Application.Current.Shutdown();
+            }
+            catch (Exception ex)
+            {
+                SetUpdateStatus($"Install failed: {ex.Message}");
+                UpdateBtn.IsEnabled = true;
+                InstallUpdateBtn.IsEnabled = true;
+            }
+        }
+
+        private async Task RunUpdateCheckAsync(bool downloadIfAvailable, bool userInitiated)
+        {
+            if (_updateService == null) return;
+            if (_updateInProgress)
+            {
+                if (userInitiated)
+                    SetUpdateStatus("Update check already in progress…");
+                return;
+            }
+
+            _updateInProgress = true;
+            _updateCts?.Cancel();
+            _updateCts = new CancellationTokenSource();
+            var ct = _updateCts.Token;
+
+            try
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    UpdateBtn.IsEnabled = false;
+                    UpdateBtn.Content = "Checking…";
+                    if (userInitiated || string.IsNullOrEmpty(UpdateStatusText.Text))
+                        SetUpdateStatus("Checking for updates…");
+                });
+
+                UpdateCheckResult result;
+                if (downloadIfAvailable)
+                {
+                    var progress = new Progress<double>(p =>
+                    {
+                        _ = Dispatcher.InvokeAsync(() =>
+                        {
+                            UpdateBtn.Content = "Downloading…";
+                            SetUpdateStatus($"Downloading update… {p:0}%");
+                        });
+                    });
+
+                    // Check first so we can show "up to date" without downloading
+                    result = await _updateService.CheckForUpdateAsync(ct).ConfigureAwait(true);
+                    if (result.Success && result.UpdateAvailable)
+                    {
+                        UpdateBtn.Content = "Downloading…";
+                        SetUpdateStatus($"Downloading v{result.LatestVersion}…");
+                        result = await _updateService.DownloadAndStageAsync(progress, ct).ConfigureAwait(true);
+                    }
+                }
+                else
+                {
+                    result = await _updateService.CheckForUpdateAsync(ct).ConfigureAwait(true);
+                }
+
+                ApplyUpdateUi(result);
+            }
+            catch (OperationCanceledException)
+            {
+                if (userInitiated)
+                    SetUpdateStatus("Update check cancelled.");
+                UpdateBtn.Content = "Check for Updates";
+                UpdateBtn.IsEnabled = true;
+            }
+            catch (Exception ex)
+            {
+                SetUpdateStatus($"Update check failed: {ex.Message}");
+                UpdateBtn.Content = "Check for Updates";
+                UpdateBtn.IsEnabled = true;
+                InstallUpdateBtn.Visibility = Visibility.Collapsed;
+                InstallUpdateBtn.IsEnabled = false;
+            }
+            finally
+            {
+                _updateInProgress = false;
+            }
+        }
+
+        private void ApplyUpdateUi(UpdateCheckResult result)
+        {
+            VersionText.Text = $"PalAssist v{UpdateService.GetCurrentVersion()}";
+
+            if (!result.Success)
+            {
+                SetUpdateStatus(result.Message);
+                UpdateBtn.Content = "Check for Updates";
+                UpdateBtn.IsEnabled = true;
+                InstallUpdateBtn.Visibility = Visibility.Collapsed;
+                InstallUpdateBtn.IsEnabled = false;
+                return;
+            }
+
+            if (result.UpdateAvailable && (result.Staged || _updateService?.IsStaged == true))
+            {
+                SetUpdateStatus($"v{result.LatestVersion} ready — click Install & Restart.");
+                UpdateBtn.Content = "Check for Updates";
+                UpdateBtn.IsEnabled = true;
+                InstallUpdateBtn.Visibility = Visibility.Visible;
+                InstallUpdateBtn.IsEnabled = true;
+                return;
+            }
+
+            if (result.UpdateAvailable)
+            {
+                SetUpdateStatus($"v{result.LatestVersion} available. Click Check to download.");
+                UpdateBtn.Content = "Download Update";
+                UpdateBtn.IsEnabled = true;
+                InstallUpdateBtn.Visibility = Visibility.Collapsed;
+                InstallUpdateBtn.IsEnabled = false;
+                return;
+            }
+
+            SetUpdateStatus(result.Message);
             UpdateBtn.Content = "Check for Updates";
             UpdateBtn.IsEnabled = true;
+            InstallUpdateBtn.Visibility = Visibility.Collapsed;
+            InstallUpdateBtn.IsEnabled = false;
+        }
+
+        private void SetUpdateStatus(string text)
+        {
+            UpdateStatusText.Text = text;
         }
 
         // ─────────────────────────────────────────────────
@@ -769,6 +944,7 @@ namespace PalAssist
         private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
             _uiTimer?.Stop();
+            _updateCts?.Cancel();
 
             if (_configManager != null)
             {
@@ -782,6 +958,7 @@ namespace PalAssist
             _featureManager?.Dispose();
             _hotkeyManager?.Dispose();
             _windowTracker?.Dispose();
+            _updateService?.Dispose();
         }
     }
 }

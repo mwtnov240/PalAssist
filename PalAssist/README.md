@@ -15,6 +15,7 @@ A modern, external overlay & input-assist tool for **Palworld** on Windows.
 | **Overlay Menu** | Tabbed dark-themed menu on top of the game | `Insert` |
 | **HUD Indicator** | Consolidated status panel showing active assists | Configurable |
 | **Config Persistence** | All settings saved to `config.json` | — |
+| **Auto Update** | Checks GitHub Releases on startup; one-click install & restart | Settings → About |
 
 ### Sprint Assist Logic
 When enabled, Sprint Assist:
@@ -60,7 +61,39 @@ Output: `PalAssist\bin\Release\net8.0-windows\PalAssist.exe`
 |---|---|
 | **Assists** | Hold E toggle, Sprint Assist toggle + sliders + dodge pause option |
 | **AI Assists** | Placeholder — "Coming in a future update" |
-| **Settings** | Hotkey rebinding, HUD position preset/drag, About + update check |
+| **Settings** | Hotkey rebinding, HUD position preset/drag, About + auto-update |
+
+---
+
+## Auto-update
+
+On startup (when `auto_check_updates` is true), PalAssist queries the latest [GitHub Release](https://github.com/mwtnov240/PalAssist/releases) and downloads a newer build in the background. Your settings (`config.json`) are kept; only the executable is replaced.
+
+1. Open **Settings → About** to see version / status.
+2. Click **Check for Updates** anytime.
+3. When ready, click **Install & Restart** (disables assists, saves config, swaps the exe, relaunches).
+
+Updates are **not** force-applied mid-game — you choose when to restart.
+
+### Publishing a new update (for maintainers)
+
+1. **Bump version** in `PalAssist.csproj` (`Version` / `InformationalVersion`, e.g. `1.0.1`).
+2. **Publish** self-contained single-file:
+
+```powershell
+dotnet publish PalAssist\PalAssist.csproj -c Release -r win-x64 --self-contained true `
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish\win-x64
+```
+
+3. **Zip** the exe:
+
+```powershell
+Compress-Archive -Path publish\win-x64\PalAssist.exe -DestinationPath PalAssist-v1.0.1-win-x64.zip -Force
+```
+
+4. **Create a GitHub Release** with tag **`v1.0.1`** (must match the app version) and upload `PalAssist-v1.0.1-win-x64.zip`.
+
+Clients on older versions will offer the update on next launch or manual check.
 
 ---
 
@@ -80,7 +113,8 @@ PalAssist/
 │   ├── InputSimulator.cs          # Scan-code key simulation
 │   ├── HotkeyManager.cs           # Global hotkey registration
 │   ├── WindowTracker.cs           # Palworld window detection & tracking
-│   └── ConfigManager.cs           # JSON config + KeyHelper utility
+│   ├── ConfigManager.cs           # JSON config + KeyHelper utility
+│   └── UpdateService.cs           # GitHub Releases check / download / apply
 │
 └── Features/
     ├── IFeature.cs                # Feature interface
@@ -132,7 +166,8 @@ All settings persist to `config.json`:
   "hotkey_holdE": "F1",
   "hotkey_sprint": "F2",
   "hud_preset": "TopRight",
-  "hud_draggable": false
+  "hud_draggable": false,
+  "auto_check_updates": true
 }
 ```
 
