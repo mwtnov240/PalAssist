@@ -29,8 +29,23 @@ When enabled, Sprint Assist:
 
 ## Requirements
 
-- **Windows 10/11** (x64)
+**End users (download from GitHub):**
+- **Windows 10/11** (x64) only
+- **No .NET install needed** — releases are self-contained single-file builds
+
+**Developers (building from source):**
 - **.NET 8.0+ SDK** — [Download here](https://dotnet.microsoft.com/download/dotnet/8.0)
+
+---
+
+## Download (end users)
+
+1. Open the latest [**GitHub Release**](https://github.com/mwtnov240/PalAssist/releases/latest).
+2. Download **`PalAssist.exe`** (direct — no unzip).
+3. Run it (Windows may show SmartScreen for unsigned apps → More info → Run anyway).
+4. Launch Palworld, press **Insert** for the menu.
+
+Optional: a `.zip` is also attached if you prefer that format.
 
 ---
 
@@ -77,23 +92,25 @@ Updates are **not** force-applied mid-game — you choose when to restart.
 
 ### Publishing a new update (for maintainers)
 
-1. **Bump version** in `PalAssist.csproj` (`Version` / `InformationalVersion`, e.g. `1.0.1`).
-2. **Publish** self-contained single-file:
+1. **Bump version** in `PalAssist.csproj` (`Version` / `InformationalVersion`, e.g. `1.0.2`).
+2. **Publish** self-contained single-file (bundles .NET — users need no runtime):
 
 ```powershell
 dotnet publish PalAssist\PalAssist.csproj -c Release -r win-x64 --self-contained true `
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish\win-x64
 ```
 
-3. **Zip** the exe:
+3. **Optional zip** (for people who prefer it):
 
 ```powershell
-Compress-Archive -Path publish\win-x64\PalAssist.exe -DestinationPath PalAssist-v1.0.1-win-x64.zip -Force
+Compress-Archive -Path publish\win-x64\PalAssist.exe -DestinationPath publish\PalAssist-v1.0.2-win-x64.zip -Force
 ```
 
-4. **Create a GitHub Release** with tag **`v1.0.1`** (must match the app version) and upload `PalAssist-v1.0.1-win-x64.zip`.
+4. **Create a GitHub Release** with tag **`v1.0.2`** (must match the app version) and upload:
+   - **`PalAssist.exe`** (primary — direct download)
+   - `PalAssist-v1.0.2-win-x64.zip` (optional)
 
-Clients on older versions will offer the update on next launch or manual check.
+Clients on older versions will offer the update on next launch or manual check. The updater prefers `.exe` assets, then falls back to `.zip`.
 
 ---
 

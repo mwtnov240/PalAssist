@@ -14,8 +14,8 @@ using System.Threading.Tasks;
 namespace PalAssist.Core
 {
     /// <summary>
-    /// Checks GitHub Releases for a newer PalAssist build, downloads the zip,
-    /// stages the exe, and applies it via a short cmd script after the app exits.
+    /// Checks GitHub Releases for a newer PalAssist build, downloads the .exe
+    /// (or zip), stages it, and applies via a short cmd script after the app exits.
     /// </summary>
     public sealed class UpdateService : IDisposable
     {
@@ -101,7 +101,7 @@ namespace PalAssist.Core
 
             var asset = PickAsset(release.Assets);
             if (asset == null || string.IsNullOrWhiteSpace(asset.BrowserDownloadUrl))
-                return UpdateCheckResult.Fail(current, "Latest release has no downloadable zip asset.");
+                return UpdateCheckResult.Fail(current, "Latest release has no downloadable .exe or .zip asset.");
 
             var result = new UpdateCheckResult
             {
@@ -112,7 +112,7 @@ namespace PalAssist.Core
                 TagName = remoteTag,
                 ReleaseNotes = release.Body ?? "",
                 DownloadUrl = asset.BrowserDownloadUrl,
-                AssetName = asset.Name ?? "update.zip",
+                AssetName = asset.Name ?? "PalAssist.exe",
                 AssetSizeBytes = asset.Size,
                 Message = $"Update available: v{remoteVer}"
             };
@@ -122,7 +122,7 @@ namespace PalAssist.Core
         }
 
         /// <summary>
-        /// Download the pending release zip and extract PalAssist.exe to a temp stage folder.
+        /// Download the pending release asset (.exe preferred, or .zip) and stage PalAssist.exe.
         /// </summary>
         public async Task<UpdateCheckResult> DownloadAndStageAsync(
             IProgress<double>? progress = null,
@@ -132,7 +132,9 @@ namespace PalAssist.Core
                 return UpdateCheckResult.Fail(GetCurrentVersion(), "No update is pending. Check first.");
 
             string current = _pending.CurrentVersion;
-            string zipPath = Path.Combine(_stageDir, "download.zip");
+            string assetName = _pending.AssetName ?? "";
+            bool isZip = assetName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+            string downloadPath = Path.Combine(_stageDir, isZip ? "download.zip" : "PalAssist.exe");
 
             try
             {
@@ -140,23 +142,37 @@ namespace PalAssist.Core
                     Directory.Delete(_stageDir, recursive: true);
                 Directory.CreateDirectory(_stageDir);
 
-                await DownloadFileAsync(_pending.DownloadUrl!, zipPath, progress, ct).ConfigureAwait(false);
+                await DownloadFileAsync(_pending.DownloadUrl!, downloadPath, progress, ct).ConfigureAwait(false);
 
-                ZipFile.ExtractToDirectory(zipPath, _stageDir, overwriteFiles: true);
-
-                // Prefer root or nested PalAssist.exe
-                string? exe = Directory.EnumerateFiles(_stageDir, "PalAssist.exe", SearchOption.AllDirectories)
-                    .FirstOrDefault();
-
-                if (exe == null || !File.Exists(exe))
+                string? exe;
+                if (isZip)
                 {
-                    _stagedExePath = null;
-                    return UpdateCheckResult.Fail(current, "Zip did not contain PalAssist.exe.");
+                    ZipFile.ExtractToDirectory(downloadPath, _stageDir, overwriteFiles: true);
+                    try { File.Delete(downloadPath); } catch { /* ignore */ }
+
+                    exe = Directory.EnumerateFiles(_stageDir, "PalAssist.exe", SearchOption.AllDirectories)
+                        .FirstOrDefault();
+
+                    if (exe == null || !File.Exists(exe))
+                    {
+                        _stagedExePath = null;
+                        return UpdateCheckResult.Fail(current, "Zip did not contain PalAssist.exe.");
+                    }
+                }
+                else
+                {
+                    // Direct .exe asset — already staged at downloadPath
+                    if (!File.Exists(downloadPath) || new FileInfo(downloadPath).Length < 1024)
+                    {
+                        _stagedExePath = null;
+                        return UpdateCheckResult.Fail(current, "Downloaded file looks invalid.");
+                    }
+
+                    exe = downloadPath;
                 }
 
                 _stagedExePath = exe;
 
-                // Keep pending metadata; mark staged
                 _pending.Message = $"v{_pending.LatestVersion} ready to install";
                 _pending.Staged = true;
                 return _pending;
@@ -169,10 +185,6 @@ namespace PalAssist.Core
             {
                 _stagedExePath = null;
                 return UpdateCheckResult.Fail(current, $"Download failed: {ex.Message}");
-            }
-            finally
-            {
-                try { if (File.Exists(zipPath)) File.Delete(zipPath); } catch { /* ignore */ }
             }
         }
 
@@ -293,20 +305,37 @@ namespace PalAssist.Core
         {
             if (assets == null || assets.Length == 0) return null;
 
-            // Prefer self-contained win-x64 zip naming used by our releases
+            // 1) Exact PalAssist.exe (primary: direct download, no unzip)
             var preferred = assets.FirstOrDefault(a =>
+                a.Name != null &&
+                a.Name.Equals("PalAssist.exe", StringComparison.OrdinalIgnoreCase));
+            if (preferred != null) return preferred;
+
+            // 2) Any PalAssist*.exe
+            preferred = assets.FirstOrDefault(a =>
+                a.Name != null &&
+                a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
+                a.Name.Contains("PalAssist", StringComparison.OrdinalIgnoreCase));
+            if (preferred != null) return preferred;
+
+            // 3) Self-contained win-x64 zip
+            preferred = assets.FirstOrDefault(a =>
                 a.Name != null &&
                 a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) &&
                 a.Name.Contains("win-x64", StringComparison.OrdinalIgnoreCase) &&
                 a.Name.Contains("PalAssist", StringComparison.OrdinalIgnoreCase));
-
             if (preferred != null) return preferred;
 
+            // 4) Any PalAssist zip
             preferred = assets.FirstOrDefault(a =>
                 a.Name != null &&
                 a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) &&
                 a.Name.Contains("PalAssist", StringComparison.OrdinalIgnoreCase));
+            if (preferred != null) return preferred;
 
+            // 5) Fallback: any .exe then any .zip
+            preferred = assets.FirstOrDefault(a =>
+                a.Name != null && a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
             if (preferred != null) return preferred;
 
             return assets.FirstOrDefault(a =>
