@@ -18,7 +18,7 @@ namespace PalAssist.Features
         /// <summary>Read-only view of all registered features.</summary>
         public IReadOnlyList<IFeature> Features => _features;
 
-        /// <summary>True when all features have input suspended (focus-lock).</summary>
+        /// <summary>True when all features have input suspended (Focus Lock).</summary>
         public bool IsInputSuspended => _inputSuspended;
 
         /// <summary>Raised whenever any feature's enabled state changes.</summary>
@@ -52,7 +52,7 @@ namespace PalAssist.Features
             else
             {
                 feature.OnEnable();
-                // If global focus-lock has input suspended, immediately release keys
+                // If Focus Lock has input suspended, immediately release keys
                 if (_inputSuspended)
                     feature.SuspendInput();
             }
@@ -73,7 +73,7 @@ namespace PalAssist.Features
 
         /// <summary>
         /// Suspend or resume input for all enabled features without clearing toggles.
-        /// Used by Beta focus-lock when Palworld loses/gains foreground focus.
+        /// Used by Focus Lock when Palworld loses/gains foreground focus.
         /// </summary>
         public void SetInputSuspended(bool suspended)
         {

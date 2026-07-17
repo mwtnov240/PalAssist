@@ -11,6 +11,24 @@ using System.Windows.Threading;
 using PalAssist.Core;
 using PalAssist.Features;
 using PalAssist.Win32;
+// Prefer WPF types when WinForms is also referenced
+using Application = System.Windows.Application;
+using Brush = System.Windows.Media.Brush;
+using Brushes = System.Windows.Media.Brushes;
+using Button = System.Windows.Controls.Button;
+using Color = System.Windows.Media.Color;
+using ComboBox = System.Windows.Controls.ComboBox;
+using Cursors = System.Windows.Input.Cursors;
+using FontFamily = System.Windows.Media.FontFamily;
+using HorizontalAlignment = System.Windows.HorizontalAlignment;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using MessageBox = System.Windows.MessageBox;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
+using MessageBoxResult = System.Windows.MessageBoxResult;
+using MouseEventArgs = System.Windows.Input.MouseEventArgs;
+using Orientation = System.Windows.Controls.Orientation;
+using Point = System.Windows.Point;
 
 namespace PalAssist
 {
@@ -27,6 +45,8 @@ namespace PalAssist
         private FeatureManager? _featureManager;
         private ConfigManager?  _configManager;
         private UpdateService?  _updateService;
+        private SoundService    _soundService = new();
+        private TrayService?    _trayService;
         private CancellationTokenSource? _updateCts;
         private bool _updateInProgress;
 
@@ -38,6 +58,15 @@ namespace PalAssist
         // ── State ──
         private bool   _menuVisible = false;
         private IntPtr _hwnd;
+        private bool   _allowClose;
+        private bool   _suppressAppearanceHandlers;
+        private bool   _suppressSoundHandlers;
+        private bool   _suppressTrayHandlers;
+        private bool   _suppressFocusLockHandler;
+
+        // Focus Lock: suspend immediately, resume after short debounce
+        private DispatcherTimer? _focusResumeTimer;
+        private bool _focusLockWantSuspend;
 
         // ── Hotkey IDs ──
         private int _menuHotkeyId   = -1;
@@ -120,6 +149,10 @@ namespace PalAssist
             _configManager = new ConfigManager();
             _configManager.Load();
             var cfg = _configManager.Config;
+
+            // ── Theme / appearance (before UI sync that depends on brushes) ──
+            ThemeService.Apply(cfg.UiTheme);
+            ApplySoundFromConfig(cfg);
 
             // ── Features ──
             _featureManager = new FeatureManager();
@@ -204,6 +237,11 @@ namespace PalAssist
             _uiTimer.Tick += (_, _) => SyncSprintStatus();
             _uiTimer.Start();
 
+            // ── Focus Lock (stable) ──
+            _focusResumeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+            _focusResumeTimer.Tick += FocusResumeTimer_Tick;
+            RestoreFocusLockFromConfig(cfg);
+
             // ── Beta gate + UI restore (only apply beta features if unlocked) ──
             ApplyBetaTabVisibility(cfg.BetaEnabled);
             SetBetaEnabledToggleSilent(cfg.BetaEnabled);
@@ -212,6 +250,12 @@ namespace PalAssist
 
             // ── Crosshair restore ──
             RestoreCrosshairFromConfig(cfg);
+
+            // ── Appearance / sound / tray UI ──
+            RestoreAppearanceFromConfig(cfg);
+            RestoreSoundUiFromConfig(cfg);
+            RestoreTrayUiFromConfig(cfg);
+            InitTray(cfg);
 
             // Start with menu visible by default on startup
             SetMenuVisible(true);
@@ -240,6 +284,9 @@ namespace PalAssist
             UpdateStatusText.Text = "";
             InstallUpdateBtn.Visibility = Visibility.Collapsed;
             InstallUpdateBtn.IsEnabled = false;
+
+            // What's New after upgrade (before update check so user sees local notes)
+            MaybeShowWhatsNew(cfg);
 
             // Always auto-check on boot; prompt before download/install
             if (cfg.AutoCheckUpdates)
@@ -437,6 +484,7 @@ namespace PalAssist
             if (_workAssist == null || _featureManager == null) return;
             _featureManager.Toggle(_workAssist);
             WorkAssistToggle.IsChecked = _workAssist.IsEnabled;
+            _soundService.PlayToggle(_workAssist.IsEnabled);
         }
 
         private void OnSprintHotkeyPressed()
@@ -444,6 +492,7 @@ namespace PalAssist
             if (!SprintAssistAvailable || _sprint == null || _featureManager == null) return;
             _featureManager.Toggle(_sprint);
             SprintToggle.IsChecked = _sprint.IsEnabled;
+            _soundService.PlayToggle(_sprint.IsEnabled);
         }
 
         // ─────────────────────────────────────────────────
@@ -623,6 +672,8 @@ namespace PalAssist
             if (!found)
             {
                 GameStatusText.Text = "Palworld not found";
+                // Focus path also fires; keep status labels in sync
+                UpdateFocusLockStatus();
                 return;
             }
 
@@ -630,6 +681,7 @@ namespace PalAssist
             GameStatusText.Text = string.IsNullOrEmpty(platform)
                 ? "Palworld connected"
                 : $"Palworld connected ({platform})";
+            UpdateFocusLockStatus();
         }
 
         // ─────────────────────────────────────────────────
@@ -640,14 +692,22 @@ namespace PalAssist
         {
             if (_workAssist == null || _featureManager == null) return;
             bool want = WorkAssistToggle.IsChecked == true;
-            if (want != _workAssist.IsEnabled) _featureManager.Toggle(_workAssist);
+            if (want != _workAssist.IsEnabled)
+            {
+                _featureManager.Toggle(_workAssist);
+                _soundService.PlayToggle(_workAssist.IsEnabled);
+            }
         }
 
         private void SprintToggle_Changed(object s, RoutedEventArgs e)
         {
             if (!SprintAssistAvailable || _sprint == null || _featureManager == null) return;
             bool want = SprintToggle.IsChecked == true;
-            if (want != _sprint.IsEnabled) _featureManager.Toggle(_sprint);
+            if (want != _sprint.IsEnabled)
+            {
+                _featureManager.Toggle(_sprint);
+                _soundService.PlayToggle(_sprint.IsEnabled);
+            }
         }
 
         private void SprintDurSlider_Changed(object s, RoutedPropertyChangedEventArgs<double> e)
@@ -761,47 +821,50 @@ namespace PalAssist
 
         /// <summary>
         /// Turns off beta-only assists and clears their UI when the Beta tab is locked again.
+        /// Focus Lock is stable and is not cleared here.
         /// </summary>
         private void DisableBetaFeatures()
         {
             if (_featureManager != null && _profileWork != null && _profileWork.IsEnabled)
                 _featureManager.Toggle(_profileWork);
 
-            if (_featureManager != null)
-                _featureManager.SetInputSuspended(false);
-
             if (_configManager != null)
-            {
-                _configManager.Config.BetaFocusLock = false;
                 _configManager.Config.BetaProfileWorkEnabled = false;
-            }
 
-            BetaFocusLockToggle.IsChecked = false;
             BetaProfileWorkToggle.IsChecked = false;
-            UpdateFocusLockStatus();
             UpdateProfileKeysLabel();
             UpdateHud();
         }
 
         private void RestoreBetaUiFromConfig(AppConfig cfg)
         {
-            BetaFocusLockToggle.IsChecked = cfg.BetaFocusLock;
             BetaSessionAutoStopCheck.IsChecked = cfg.BetaSessionAutoStopAssists;
             SetBetaSessionRemindCombo(cfg.BetaSessionRemindMinutes);
             SetBetaProfileCombo(cfg.BetaActiveProfile);
             RefreshCustomKeyButtons();
             UpdateProfileKeysLabel();
-            UpdateFocusLockStatus();
 
             if (cfg.BetaProfileWorkEnabled && _profileWork != null && _featureManager != null)
             {
                 _featureManager.Toggle(_profileWork);
                 BetaProfileWorkToggle.IsChecked = true;
             }
+        }
 
-            // Apply focus lock immediately if game is already unfocused
-            if (cfg.BetaFocusLock && _windowTracker != null && !_windowTracker.IsFocused)
-                _featureManager?.SetInputSuspended(true);
+        private void RestoreFocusLockFromConfig(AppConfig cfg)
+        {
+            _suppressFocusLockHandler = true;
+            try
+            {
+                FocusLockToggle.IsChecked = cfg.FocusLockEnabled;
+            }
+            finally
+            {
+                _suppressFocusLockHandler = false;
+            }
+
+            ApplyFocusLockState(cfg.FocusLockEnabled, playSound: false);
+            UpdateFocusLockStatus();
         }
 
         private void ApplyProfileFromConfig(AppConfig cfg)
@@ -828,7 +891,6 @@ namespace PalAssist
         {
             if (_configManager == null) return;
             var cfg = _configManager.Config;
-            cfg.BetaFocusLock = BetaFocusLockToggle.IsChecked == true;
             cfg.BetaProfileWorkEnabled = _profileWork?.IsEnabled == true;
             cfg.BetaActiveProfile = GetSelectedProfileId();
             cfg.BetaCustomKeys = string.Join(",", GetCustomKeysFromButtons());
@@ -912,52 +974,111 @@ namespace PalAssist
 
         private void UpdateFocusLockStatus()
         {
-            bool lockOn = BetaFocusLockToggle.IsChecked == true;
+            bool lockOn = FocusLockToggle.IsChecked == true;
             bool focused = _windowTracker?.IsFocused == true;
             bool suspended = _featureManager?.IsInputSuspended == true;
 
             if (!lockOn)
             {
-                BetaFocusDot.Fill = (SolidColorBrush)FindResource("TextSecondaryBrush");
-                BetaFocusStatusText.Text = "Focus lock off";
+                FocusLockDot.Fill = (SolidColorBrush)FindResource("TextSecondaryBrush");
+                FocusLockStatusDot.Fill = (SolidColorBrush)FindResource("TextSecondaryBrush");
+                FocusLockStatusText.Text = "Focus lock off";
             }
             else if (suspended || !focused)
             {
-                BetaFocusDot.Fill = (SolidColorBrush)FindResource("AccentYellowBrush");
-                BetaFocusStatusText.Text = "Suspended (Palworld not focused)";
+                FocusLockDot.Fill = (SolidColorBrush)FindResource("AccentYellowBrush");
+                FocusLockStatusDot.Fill = (SolidColorBrush)FindResource("AccentYellowBrush");
+                FocusLockStatusText.Text = _windowTracker?.IsFound != true
+                    ? "Suspended (Palworld not found)"
+                    : "Suspended (Palworld not focused)";
             }
             else
             {
-                BetaFocusDot.Fill = (SolidColorBrush)FindResource("AccentGreenBrush");
-                BetaFocusStatusText.Text = "Game focused — assists active";
+                FocusLockDot.Fill = (SolidColorBrush)FindResource("AccentGreenBrush");
+                FocusLockStatusDot.Fill = (SolidColorBrush)FindResource("AccentGreenBrush");
+                FocusLockStatusText.Text = "Game focused — assists active";
             }
         }
 
         private void OnGameFocusChanged(bool focused)
         {
-            if (_configManager?.Config.BetaEnabled == true
-                && _configManager.Config.BetaFocusLock
-                && _featureManager != null)
-                _featureManager.SetInputSuspended(!focused);
+            if (_configManager?.Config.FocusLockEnabled != true || _featureManager == null)
+            {
+                UpdateFocusLockStatus();
+                return;
+            }
+
+            // Suspend immediately when unfocused; debounce resume to avoid flicker
+            if (!focused)
+            {
+                _focusLockWantSuspend = true;
+                _focusResumeTimer?.Stop();
+                if (!_featureManager.IsInputSuspended)
+                {
+                    _featureManager.SetInputSuspended(true);
+                    _soundService.PlayFocus(suspended: true);
+                }
+            }
+            else
+            {
+                _focusLockWantSuspend = false;
+                if (_featureManager.IsInputSuspended)
+                {
+                    _focusResumeTimer?.Stop();
+                    _focusResumeTimer?.Start();
+                }
+            }
+
             UpdateFocusLockStatus();
         }
 
-        private void BetaFocusLockToggle_Changed(object s, RoutedEventArgs e)
+        private void FocusResumeTimer_Tick(object? sender, EventArgs e)
         {
-            if (_configManager == null || _featureManager == null) return;
-            if (_configManager.Config.BetaEnabled != true)
+            _focusResumeTimer?.Stop();
+            if (_focusLockWantSuspend) return;
+            if (_configManager?.Config.FocusLockEnabled != true || _featureManager == null) return;
+            if (_windowTracker?.IsFocused != true) return;
+
+            if (_featureManager.IsInputSuspended)
             {
-                BetaFocusLockToggle.IsChecked = false;
-                return;
-            }
-            bool on = BetaFocusLockToggle.IsChecked == true;
-            _configManager.Config.BetaFocusLock = on;
-            if (on)
-                _featureManager.SetInputSuspended(_windowTracker?.IsFocused != true);
-            else
                 _featureManager.SetInputSuspended(false);
-            SaveBetaConfig();
+                _soundService.PlayFocus(suspended: false);
+            }
             UpdateFocusLockStatus();
+        }
+
+        private void FocusLockToggle_Changed(object s, RoutedEventArgs e)
+        {
+            if (_suppressFocusLockHandler || _configManager == null || _featureManager == null) return;
+            bool on = FocusLockToggle.IsChecked == true;
+            _configManager.Config.FocusLockEnabled = on;
+            _configManager.Save();
+            ApplyFocusLockState(on, playSound: true);
+            UpdateFocusLockStatus();
+        }
+
+        private void ApplyFocusLockState(bool enabled, bool playSound)
+        {
+            if (_featureManager == null) return;
+            _focusResumeTimer?.Stop();
+            _focusLockWantSuspend = false;
+
+            if (enabled)
+            {
+                bool shouldSuspend = _windowTracker?.IsFocused != true;
+                _focusLockWantSuspend = shouldSuspend;
+                bool was = _featureManager.IsInputSuspended;
+                _featureManager.SetInputSuspended(shouldSuspend);
+                if (playSound && was != shouldSuspend)
+                    _soundService.PlayFocus(suspended: shouldSuspend);
+            }
+            else
+            {
+                bool was = _featureManager.IsInputSuspended;
+                _featureManager.SetInputSuspended(false);
+                if (playSound && was)
+                    _soundService.PlayFocus(suspended: false);
+            }
         }
 
         private void BetaProfileWorkToggle_Changed(object s, RoutedEventArgs e)
@@ -970,7 +1091,10 @@ namespace PalAssist
             }
             bool want = BetaProfileWorkToggle.IsChecked == true;
             if (want != _profileWork.IsEnabled)
+            {
                 _featureManager.Toggle(_profileWork);
+                _soundService.PlayToggle(_profileWork.IsEnabled);
+            }
             UpdateProfileKeysLabel();
             SaveBetaConfig();
             UpdateHud();
@@ -1057,6 +1181,7 @@ namespace PalAssist
             _sessionLastRemindUtc = DateTime.UtcNow;
             BetaSessionReminderText.Text = $"Session reminder ({GetSelectedRemindMinutes()} min) — take a break?";
             BetaSessionReminderText.Visibility = Visibility.Visible;
+            _soundService.PlayReminder();
 
             if (BetaSessionAutoStopCheck.IsChecked == true)
             {
@@ -1178,12 +1303,15 @@ namespace PalAssist
             cfg.MenuX = Canvas.GetLeft(MenuPanel);
             cfg.MenuY = Canvas.GetTop(MenuPanel);
             cfg.BetaEnabled = BetaEnabledToggle.IsChecked == true;
-            cfg.BetaFocusLock = BetaFocusLockToggle.IsChecked == true;
+            cfg.FocusLockEnabled = FocusLockToggle.IsChecked == true;
             cfg.BetaActiveProfile = GetSelectedProfileId();
             cfg.BetaCustomKeys = string.Join(",", GetCustomKeysFromButtons());
             cfg.BetaSessionRemindMinutes = GetSelectedRemindMinutes();
             cfg.BetaSessionAutoStopAssists = BetaSessionAutoStopCheck.IsChecked == true;
 
+            SyncAppearanceConfigFromUi(cfg);
+            SyncSoundConfigFromUi(cfg);
+            SyncTrayConfigFromUi(cfg);
             SyncCrosshairConfigFromUi(cfg);
 
             if (HudPresetCombo.SelectedItem != null)
@@ -1274,9 +1402,18 @@ namespace PalAssist
 
         private bool PromptInstallUpdate(string version)
         {
+            _soundService.PlayUpdate();
+            string notes = _updateService?.PendingUpdate?.ReleaseNotes?.Trim() ?? "";
+            if (notes.Length > 400)
+                notes = notes[..400] + "…";
+
+            string body = $"PalAssist v{version} is available.\n\nDownload and install now?\n(The app will restart after installing.)";
+            if (!string.IsNullOrWhiteSpace(notes))
+                body += "\n\nRelease notes:\n" + notes;
+
             var result = MessageBox.Show(
                 this,
-                $"PalAssist v{version} is available.\n\nDownload and install now?\n(The app will restart after installing.)",
+                body,
                 "Update Available",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
@@ -1758,8 +1895,21 @@ namespace PalAssist
 
         private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
+            // Minimize to tray instead of exiting (unless Exit was chosen from tray)
+            if (!_allowClose
+                && _configManager?.Config.MinimizeToTray == true
+                && _configManager.Config.TrayEnabled)
+            {
+                e.Cancel = true;
+                SetMenuVisible(false);
+                ShowInTaskbar = false;
+                _trayService?.ShowBalloon("PalAssist", "Still running in the tray. Right-click the icon to Exit.", 2500);
+                return;
+            }
+
             _uiTimer?.Stop();
             _sessionTimer?.Stop();
+            _focusResumeTimer?.Stop();
             _updateCts?.Cancel();
             SetMenuCursorForced(false);
 
@@ -1771,19 +1921,357 @@ namespace PalAssist
                 _configManager.Config.MenuX = Canvas.GetLeft(MenuPanel);
                 _configManager.Config.MenuY = Canvas.GetTop(MenuPanel);
                 _configManager.Config.BetaEnabled = BetaEnabledToggle.IsChecked == true;
-                _configManager.Config.BetaFocusLock = BetaFocusLockToggle.IsChecked == true;
+                _configManager.Config.FocusLockEnabled = FocusLockToggle.IsChecked == true;
                 _configManager.Config.BetaActiveProfile = GetSelectedProfileId();
                 _configManager.Config.BetaCustomKeys = string.Join(",", GetCustomKeysFromButtons());
                 _configManager.Config.BetaSessionRemindMinutes = GetSelectedRemindMinutes();
                 _configManager.Config.BetaSessionAutoStopAssists = BetaSessionAutoStopCheck.IsChecked == true;
+                SyncAppearanceConfigFromUi(_configManager.Config);
+                SyncSoundConfigFromUi(_configManager.Config);
+                SyncTrayConfigFromUi(_configManager.Config);
                 SyncCrosshairConfigFromUi(_configManager.Config);
                 _configManager.Save();
             }
 
+            _trayService?.Dispose();
             _featureManager?.Dispose();
             _hotkeyManager?.Dispose();
             _windowTracker?.Dispose();
             _updateService?.Dispose();
+        }
+
+        private void RequestExit()
+        {
+            _allowClose = true;
+            Close();
+        }
+
+        // ─────────────────────────────────────────────────
+        //  Appearance / Sound / Tray / Changelog
+        // ─────────────────────────────────────────────────
+
+        private void RestoreAppearanceFromConfig(AppConfig cfg)
+        {
+            _suppressAppearanceHandlers = true;
+            try
+            {
+                double opacity = Math.Clamp(cfg.UiOpacity, 0.5, 1.0);
+                UiOpacitySlider.Value = opacity;
+                UiOpacityLabel.Text = $"{(int)Math.Round(opacity * 100)}%";
+                SelectScaleCombo(cfg.UiScale);
+                SelectComboByContent(UiThemeCombo, ThemeService.Normalize(cfg.UiTheme), "Cyan");
+            }
+            finally
+            {
+                _suppressAppearanceHandlers = false;
+            }
+            ApplyAppearance(cfg.UiOpacity, cfg.UiScale, cfg.UiTheme, save: false);
+        }
+
+        private void SelectScaleCombo(double scale)
+        {
+            ComboBoxItem? best = null;
+            double bestDiff = double.MaxValue;
+            foreach (ComboBoxItem item in UiScaleCombo.Items)
+            {
+                if (item.Tag is string t && double.TryParse(t, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out double v))
+                {
+                    double d = Math.Abs(v - scale);
+                    if (d < bestDiff)
+                    {
+                        bestDiff = d;
+                        best = item;
+                    }
+                }
+            }
+            if (best != null)
+                UiScaleCombo.SelectedItem = best;
+        }
+
+        private void ApplyAppearance(double opacity, double scale, string theme, bool save)
+        {
+            opacity = Math.Clamp(opacity, 0.5, 1.0);
+            scale = Math.Clamp(scale, 0.75, 1.5);
+            theme = ThemeService.Normalize(theme);
+
+            ThemeService.Apply(theme);
+            MenuPanel.Opacity = opacity;
+            HudPanel.Opacity = opacity;
+
+            if (MenuPanel.LayoutTransform is not ScaleTransform st)
+            {
+                st = new ScaleTransform(scale, scale);
+                MenuPanel.LayoutTransform = st;
+            }
+            else
+            {
+                st.ScaleX = scale;
+                st.ScaleY = scale;
+            }
+
+            if (HudPanel.LayoutTransform is not ScaleTransform hst)
+            {
+                hst = new ScaleTransform(scale, scale);
+                HudPanel.LayoutTransform = hst;
+            }
+            else
+            {
+                hst.ScaleX = scale;
+                hst.ScaleY = scale;
+            }
+
+            ClampMenuToCanvas();
+            PositionHud();
+            UpdateFocusLockStatus();
+            if (_featureManager != null)
+                SyncUI();
+
+            if (save && _configManager != null)
+            {
+                _configManager.Config.UiOpacity = opacity;
+                _configManager.Config.UiScale = scale;
+                _configManager.Config.UiTheme = theme;
+                _configManager.Save();
+            }
+        }
+
+        private void SyncAppearanceConfigFromUi(AppConfig cfg)
+        {
+            cfg.UiOpacity = Math.Clamp(UiOpacitySlider.Value, 0.5, 1.0);
+            cfg.UiScale = 1.0;
+            if (UiScaleCombo.SelectedItem is ComboBoxItem si && si.Tag is string t
+                && double.TryParse(t, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double scale))
+                cfg.UiScale = scale;
+            cfg.UiTheme = ThemeService.Normalize(
+                (UiThemeCombo.SelectedItem as ComboBoxItem)?.Content?.ToString());
+        }
+
+        private void UiOpacitySlider_Changed(object s, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressAppearanceHandlers || _configManager == null) return;
+            UiOpacityLabel.Text = $"{(int)Math.Round(e.NewValue * 100)}%";
+            SyncAppearanceConfigFromUi(_configManager.Config);
+            ApplyAppearance(_configManager.Config.UiOpacity, _configManager.Config.UiScale,
+                _configManager.Config.UiTheme, save: true);
+        }
+
+        private void UiScaleCombo_Changed(object s, SelectionChangedEventArgs e)
+        {
+            if (_suppressAppearanceHandlers || _configManager == null) return;
+            SyncAppearanceConfigFromUi(_configManager.Config);
+            ApplyAppearance(_configManager.Config.UiOpacity, _configManager.Config.UiScale,
+                _configManager.Config.UiTheme, save: true);
+        }
+
+        private void UiThemeCombo_Changed(object s, SelectionChangedEventArgs e)
+        {
+            if (_suppressAppearanceHandlers || _configManager == null) return;
+            SyncAppearanceConfigFromUi(_configManager.Config);
+            ApplyAppearance(_configManager.Config.UiOpacity, _configManager.Config.UiScale,
+                _configManager.Config.UiTheme, save: true);
+        }
+
+        private void ApplySoundFromConfig(AppConfig cfg)
+        {
+            _soundService.Enabled = cfg.SoundEnabled;
+            _soundService.OnToggle = cfg.SoundOnToggle;
+            _soundService.OnFocus = cfg.SoundOnFocus;
+            _soundService.OnUpdate = cfg.SoundOnUpdate;
+        }
+
+        private void RestoreSoundUiFromConfig(AppConfig cfg)
+        {
+            _suppressSoundHandlers = true;
+            try
+            {
+                SoundEnabledToggle.IsChecked = cfg.SoundEnabled;
+                SoundOnToggleCheck.IsChecked = cfg.SoundOnToggle;
+                SoundOnFocusCheck.IsChecked = cfg.SoundOnFocus;
+                SoundOnUpdateCheck.IsChecked = cfg.SoundOnUpdate;
+            }
+            finally
+            {
+                _suppressSoundHandlers = false;
+            }
+            ApplySoundFromConfig(cfg);
+        }
+
+        private void SyncSoundConfigFromUi(AppConfig cfg)
+        {
+            cfg.SoundEnabled = SoundEnabledToggle.IsChecked == true;
+            cfg.SoundOnToggle = SoundOnToggleCheck.IsChecked == true;
+            cfg.SoundOnFocus = SoundOnFocusCheck.IsChecked == true;
+            cfg.SoundOnUpdate = SoundOnUpdateCheck.IsChecked == true;
+        }
+
+        private void SoundSettings_Changed(object s, RoutedEventArgs e)
+        {
+            if (_suppressSoundHandlers || _configManager == null) return;
+            SyncSoundConfigFromUi(_configManager.Config);
+            ApplySoundFromConfig(_configManager.Config);
+            _configManager.Save();
+        }
+
+        private void RestoreTrayUiFromConfig(AppConfig cfg)
+        {
+            _suppressTrayHandlers = true;
+            try
+            {
+                TrayEnabledToggle.IsChecked = cfg.TrayEnabled;
+                MinimizeToTrayToggle.IsChecked = cfg.MinimizeToTray;
+            }
+            finally
+            {
+                _suppressTrayHandlers = false;
+            }
+        }
+
+        private void SyncTrayConfigFromUi(AppConfig cfg)
+        {
+            cfg.TrayEnabled = TrayEnabledToggle.IsChecked == true;
+            cfg.MinimizeToTray = MinimizeToTrayToggle.IsChecked == true;
+        }
+
+        private void TraySettings_Changed(object s, RoutedEventArgs e)
+        {
+            if (_suppressTrayHandlers || _configManager == null) return;
+            SyncTrayConfigFromUi(_configManager.Config);
+            _configManager.Save();
+
+            if (_configManager.Config.TrayEnabled)
+            {
+                if (_trayService == null)
+                    InitTray(_configManager.Config);
+                else
+                    _trayService.SetVisible(true);
+            }
+            else
+            {
+                _trayService?.SetVisible(false);
+                ShowInTaskbar = true;
+            }
+        }
+
+        private void InitTray(AppConfig cfg)
+        {
+            if (!cfg.TrayEnabled) return;
+
+            if (_trayService == null)
+            {
+                _trayService = new TrayService();
+                _trayService.Initialize($"PalAssist v{UpdateService.GetCurrentVersion()}");
+                _trayService.ShowMenuRequested += () => Dispatcher.Invoke(() =>
+                {
+                    ShowInTaskbar = true;
+                    SetMenuVisible(true);
+                    Activate();
+                });
+                _trayService.HideMenuRequested += () => Dispatcher.Invoke(() => SetMenuVisible(false));
+                _trayService.ExitRequested += () => Dispatcher.Invoke(RequestExit);
+            }
+            else
+            {
+                _trayService.SetTooltip($"PalAssist v{UpdateService.GetCurrentVersion()}");
+            }
+
+            _trayService.SetVisible(true);
+        }
+
+        private void MaybeShowWhatsNew(AppConfig cfg)
+        {
+            string current = UpdateService.GetCurrentVersion();
+            string last = cfg.LastSeenVersion?.Trim() ?? "";
+
+            // Brand-new install: record version, skip popup
+            if (string.IsNullOrEmpty(last) && _configManager is { ConfigFileExistedOnLoad: false })
+            {
+                cfg.LastSeenVersion = current;
+                _configManager.Save();
+                return;
+            }
+
+            // Upgrade from a build that had no last_seen_version: show this version's notes once
+            if (string.IsNullOrEmpty(last))
+            {
+                string notes = ChangelogService.GetNotesForVersion(current);
+                if (string.IsNullOrWhiteSpace(notes))
+                    notes = ChangelogService.GetNotesSince("0.0.0", current);
+                if (!string.IsNullOrWhiteSpace(notes))
+                    ShowWhatsNewDialog($"What's New in v{current}", notes);
+                cfg.LastSeenVersion = current;
+                _configManager?.Save();
+                return;
+            }
+
+            if (!UpdateService.TryParseVersion(current, out var curVer)
+                || !UpdateService.TryParseVersion(last, out var lastVer)
+                || curVer <= lastVer)
+            {
+                return;
+            }
+
+            string sinceNotes = ChangelogService.GetNotesSince(last, current);
+            ShowWhatsNewDialog($"What's New in v{current}", sinceNotes);
+
+            cfg.LastSeenVersion = current;
+            _configManager?.Save();
+        }
+
+        private void ChangelogBtn_Click(object s, RoutedEventArgs e)
+        {
+            string current = UpdateService.GetCurrentVersion();
+            string notes = ChangelogService.GetNotesForVersion(current);
+            if (string.IsNullOrWhiteSpace(notes))
+                notes = ChangelogService.GetFullChangelog();
+            ShowWhatsNewDialog($"PalAssist v{current}", notes);
+        }
+
+        private void ShowWhatsNewDialog(string title, string body)
+        {
+            var dlg = new Window
+            {
+                Title = title,
+                Owner = this,
+                Width = 420,
+                Height = 360,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.CanResizeWithGrip,
+                Background = (SolidColorBrush)FindResource("BgCardBrush"),
+                ShowInTaskbar = false
+            };
+
+            var root = new DockPanel { Margin = new Thickness(16) };
+            var ok = new Button
+            {
+                Content = "OK",
+                Width = 88,
+                Height = 30,
+                Margin = new Thickness(0, 12, 0, 0),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+                Style = (Style)FindResource("RebindBtnStyle")
+            };
+            ok.Click += (_, _) => dlg.Close();
+            DockPanel.SetDock(ok, Dock.Bottom);
+
+            var scroll = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = new TextBlock
+                {
+                    Text = string.IsNullOrWhiteSpace(body) ? "No notes for this version." : body,
+                    TextWrapping = TextWrapping.Wrap,
+                    FontFamily = new FontFamily("Segoe UI"),
+                    FontSize = 13,
+                    Foreground = (SolidColorBrush)FindResource("TextPrimaryBrush")
+                }
+            };
+
+            root.Children.Add(ok);
+            root.Children.Add(scroll);
+            dlg.Content = root;
+            dlg.ShowDialog();
         }
 
         // ─────────────────────────────────────────────────
@@ -1906,6 +2394,12 @@ namespace PalAssist
                 "red" => (SolidColorBrush)FindResource("AccentRedBrush"),
                 "green" => (SolidColorBrush)FindResource("AccentGreenBrush"),
                 "yellow" => (SolidColorBrush)FindResource("AccentYellowBrush"),
+                "magenta" => new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0xFF)),
+                "orange" => new SolidColorBrush(Color.FromRgb(0xFF, 0x98, 0x00)),
+                "blue" => new SolidColorBrush(Color.FromRgb(0x29, 0x79, 0xFF)),
+                "pink" => new SolidColorBrush(Color.FromRgb(0xFF, 0x80, 0xAB)),
+                "black" => new SolidColorBrush(Color.FromRgb(0x10, 0x10, 0x10)),
+                "lime" => new SolidColorBrush(Color.FromRgb(0xC6, 0xFF, 0x00)),
                 _ => Brushes.White
             };
 

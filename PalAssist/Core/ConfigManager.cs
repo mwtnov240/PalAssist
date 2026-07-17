@@ -51,7 +51,11 @@ namespace PalAssist.Core
                 // Upgrading users: don't auto-force the setup wizard
                 if (!Config.BetaSetupWizardCompleted)
                     Config.BetaSetupWizardCompleted = true;
-                if (MigrateLegacyHoldEKeys(json, Config))
+                bool migrated = MigrateLegacyHoldEKeys(json, Config);
+                migrated |= MigrateFocusLock(json, Config, configFileExisted: true);
+                if (string.IsNullOrWhiteSpace(Config.LastSeenVersion))
+                    Config.LastSeenVersion = ""; // first run of this field — What's New skipped until set after boot
+                if (migrated)
                     Save();
             }
             catch
@@ -59,6 +63,40 @@ namespace PalAssist.Core
                 Config = new AppConfig();
                 // Treat corrupt file as existing user — no wizard spam
                 Config.BetaSetupWizardCompleted = true;
+            }
+        }
+
+        /// <summary>
+        /// Maps beta_focusLock → focus_lock_enabled when the stable key is absent.
+        /// Existing installs without either key keep Focus Lock off (opt-in on upgrade).
+        /// New installs use AppConfig default (on).
+        /// </summary>
+        private static bool MigrateFocusLock(string json, AppConfig cfg, bool configFileExisted)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("focus_lock_enabled", out _))
+                    return false;
+
+                if (root.TryGetProperty("beta_focusLock", out var beta))
+                {
+                    cfg.FocusLockEnabled = beta.GetBoolean();
+                    return true;
+                }
+
+                if (configFileExisted)
+                {
+                    cfg.FocusLockEnabled = false;
+                    return true;
+                }
+
+                return false;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -144,6 +182,11 @@ namespace PalAssist.Core
         [JsonPropertyName("workAssist_showHud")]
         public bool WorkAssistShowHud { get; set; } = true;
 
+        // ── Focus Lock (stable; graduated from Beta) ──
+        /// <summary>Release held keys when Palworld is not focused. Default on for new installs.</summary>
+        [JsonPropertyName("focus_lock_enabled")]
+        public bool FocusLockEnabled { get; set; } = true;
+
         // ── Sprint Assist ──
         [JsonPropertyName("sprint_enabled")]
         public bool SprintEnabled { get; set; } = false;
@@ -193,6 +236,44 @@ namespace PalAssist.Core
         // ── Updates ──
         [JsonPropertyName("auto_check_updates")]
         public bool AutoCheckUpdates { get; set; } = true;
+
+        /// <summary>
+        /// Last app version for which the What's New dialog was shown.
+        /// Empty = never shown (set to current on first launch without popup).
+        /// </summary>
+        [JsonPropertyName("last_seen_version")]
+        public string LastSeenVersion { get; set; } = "";
+
+        // ── Appearance ──
+        [JsonPropertyName("ui_opacity")]
+        public double UiOpacity { get; set; } = 0.94;
+
+        [JsonPropertyName("ui_scale")]
+        public double UiScale { get; set; } = 1.0;
+
+        /// <summary>Cyan | Purple | Green | Amber | Red</summary>
+        [JsonPropertyName("ui_theme")]
+        public string UiTheme { get; set; } = "Cyan";
+
+        // ── Sound ──
+        [JsonPropertyName("sound_enabled")]
+        public bool SoundEnabled { get; set; } = true;
+
+        [JsonPropertyName("sound_on_toggle")]
+        public bool SoundOnToggle { get; set; } = true;
+
+        [JsonPropertyName("sound_on_focus")]
+        public bool SoundOnFocus { get; set; } = false;
+
+        [JsonPropertyName("sound_on_update")]
+        public bool SoundOnUpdate { get; set; } = true;
+
+        // ── Tray ──
+        [JsonPropertyName("tray_enabled")]
+        public bool TrayEnabled { get; set; } = true;
+
+        [JsonPropertyName("minimize_to_tray")]
+        public bool MinimizeToTray { get; set; } = true;
 
         // ── Crosshair ──
         [JsonPropertyName("crosshair_enabled")]

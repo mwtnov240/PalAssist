@@ -2,7 +2,7 @@ using System.Windows;
 
 namespace PalAssist
 {
-    public partial class App : Application
+    public partial class App : System.Windows.Application
     {
     }
 }
