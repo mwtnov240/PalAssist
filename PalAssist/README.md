@@ -1,4 +1,4 @@
-# PalAssist V1.0
+# PalAssist V1.2
 
 A modern, external overlay & input-assist tool for **Palworld** on Windows.
 
@@ -11,9 +11,15 @@ A modern, external overlay & input-assist tool for **Palworld** on Windows.
 | Feature | Description | Default Hotkey |
 |---|---|---|
 | **Work Assist** | Continuously holds the F key for work/interactions | `F1` |
-| **Sprint Assist** | Auto-walks forward (W) with timed sprint/recovery cycles (Shift) | `F2` |
+| **Focus Lock** | Releases held keys when Palworld is not focused (alt-tab / minimize safe) | Toggle in Assists |
+| **Sprint Assist** | Auto-walks forward (W) with timed sprint/recovery cycles (Shift) — currently disabled in UI | `F2` |
+| **Crosshair** | Center reticle with style / size / color options | Assists tab |
 | **Overlay Menu** | Tabbed dark-themed menu on top of the game | `Insert` |
 | **HUD Indicator** | Consolidated status panel showing active assists | Configurable |
+| **System Tray** | Tray icon, minimize-to-tray, Exit from tray menu | Settings |
+| **Appearance** | Menu opacity, UI scale, color themes | Settings |
+| **Sound** | Optional feedback on toggles / focus / updates | Settings |
+| **What's New** | In-app changelog + popup after upgrades | Settings → About |
 | **Config Persistence** | All settings saved to `config.json` | — |
 | **Auto Update** | Checks GitHub Releases on startup; one-click install & restart | Settings → About |
 
@@ -74,9 +80,21 @@ Output: `PalAssist\bin\Release\net8.0-windows\PalAssist.exe`
 
 | Tab | Contents |
 |---|---|
-| **Assists** | Work Assist toggle, Sprint Assist toggle + sliders + dodge pause option |
+| **Assists** | Work Assist, Focus Lock, Crosshair (Sprint Assist hidden while disabled) |
 | **AI Assists** | Placeholder — "Coming in a future update" |
-| **Settings** | Hotkey rebinding, HUD position preset/drag, About + auto-update |
+| **Beta** | Experimental (opt-in in Settings): Work Profiles, Session Timer, Setup Wizard |
+| **Settings** | Hotkeys, HUD, Appearance, Sound, Tray, Experimental, About + What's New + auto-update |
+
+### Focus Lock
+
+When enabled (default for new installs):
+
+1. Detects Palworld focus via a WinEvent foreground hook plus a short poll backup.
+2. Treats minimized game, missing game, and other apps as **unfocused**.
+3. **Immediately** releases held assist keys on unfocus.
+4. **Resumes** held keys ~100 ms after Palworld is focused again (avoids flicker).
+
+Migrates the old Beta `beta_focusLock` setting when present.
 
 ---
 
@@ -92,8 +110,9 @@ Updates are never force-installed without your confirmation.
 
 ### Publishing a new update (for maintainers)
 
-1. **Bump version** in `PalAssist.csproj` (`Version` / `InformationalVersion`, e.g. `1.0.2`).
-2. **Publish** self-contained single-file (bundles .NET — users need no runtime):
+1. **Bump version** in `PalAssist.csproj` (`Version` / `InformationalVersion`, e.g. `1.2.0`).
+2. **Update** `PalAssist/CHANGELOG.md` (## X.Y.Z section) — shown in-app after upgrades.
+3. **Publish** self-contained single-file (bundles .NET — users need no runtime):
 
 ```powershell
 dotnet publish PalAssist\PalAssist.csproj -c Release -r win-x64 --self-contained true `
@@ -119,25 +138,31 @@ Clients on older versions will offer the update on next launch or manual check. 
 ```
 PalAssist/
 ├── PalAssist.csproj
+├── CHANGELOG.md                   # In-app What's New source
 ├── App.xaml / App.xaml.cs         # Global styles (toggle, tabs, slider, rebind button)
 ├── MainWindow.xaml                # Tabbed overlay UI
-├── MainWindow.xaml.cs             # All overlay logic
+├── MainWindow.xaml.cs             # Overlay wiring
 │
 ├── Win32/
-│   └── NativeMethods.cs           # P/Invoke (window, input, hotkeys, GetAsyncKeyState)
+│   └── NativeMethods.cs           # P/Invoke (window, input, hotkeys, WinEvent, etc.)
 │
 ├── Core/
 │   ├── InputSimulator.cs          # Scan-code key simulation
 │   ├── HotkeyManager.cs           # Global hotkey registration
-│   ├── WindowTracker.cs           # Palworld window detection & tracking
-│   ├── ConfigManager.cs           # JSON config + KeyHelper utility
-│   └── UpdateService.cs           # GitHub Releases check / download / apply
+│   ├── WindowTracker.cs           # Game window + high-accuracy focus
+│   ├── ConfigManager.cs           # JSON config + KeyHelper
+│   ├── UpdateService.cs           # GitHub Releases check / download / apply
+│   ├── ThemeService.cs            # Color themes
+│   ├── SoundService.cs            # Optional UI sounds
+│   ├── TrayService.cs             # System tray icon
+│   └── ChangelogService.cs        # CHANGELOG.md parsing
 │
 └── Features/
-    ├── IFeature.cs                # Feature interface
-    ├── FeatureManager.cs          # Feature registry + 60Hz tick loop
-    ├── WorkAssistFeature.cs       # Work Assist (hold F) implementation
-    └── SprintAssistFeature.cs     # Sprint Assist state machine
+    ├── IFeature.cs
+    ├── FeatureManager.cs          # Registry + 60Hz tick + Focus Lock suspend
+    ├── WorkAssistFeature.cs
+    ├── SprintAssistFeature.cs
+    └── ProfileWorkFeature.cs      # Beta multi-key work profiles
 ```
 
 ---
@@ -175,6 +200,7 @@ All settings persist to `config.json`:
 ```json
 {
   "workAssist_enabled": false,
+  "focus_lock_enabled": true,
   "sprint_enabled": false,
   "sprint_duration": 8.0,
   "sprint_recovery": 4.0,
@@ -184,7 +210,16 @@ All settings persist to `config.json`:
   "hotkey_sprint": "F2",
   "hud_preset": "TopRight",
   "hud_draggable": false,
-  "auto_check_updates": true
+  "ui_opacity": 0.94,
+  "ui_scale": 1.0,
+  "ui_theme": "Cyan",
+  "sound_enabled": true,
+  "sound_on_toggle": true,
+  "sound_on_focus": false,
+  "tray_enabled": true,
+  "minimize_to_tray": true,
+  "auto_check_updates": true,
+  "last_seen_version": "1.2.0"
 }
 ```
 

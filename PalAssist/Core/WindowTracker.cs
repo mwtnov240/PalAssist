@@ -7,13 +7,11 @@ using PalAssist.Win32;
 namespace PalAssist.Core
 {
     /// <summary>
-    /// Periodically polls the system to locate the Palworld window and track its
-    /// position, size, and focus state.  Raises events when changes are detected.
-    /// Also classifies the launch platform (Steam / Epic / Xbox) when possible.
+    /// Locates the Palworld window and tracks bounds + focus with high accuracy.
+    /// Uses a WinEvent foreground hook plus a short poll fallback.
     /// </summary>
     public sealed class WindowTracker : IDisposable
     {
-        // Process names to look for (without .exe)
         private static readonly string[] ProcessNames = {
             "Pal-Win64-Shipping",
             "Palworld-Win64-Shipping"
@@ -24,10 +22,20 @@ namespace PalAssist.Core
         private uint _targetProcessId;
         private bool _disposed;
 
+        // Keep delegate alive so the native hook does not call a GC'd target.
+        private readonly NativeMethods.WinEventDelegate _winEventProc;
+        private IntPtr _winEventHook = IntPtr.Zero;
+
+        private readonly uint _ownProcessId;
+
         /// <summary>True when the game window has been found.</summary>
         public bool IsFound => _targetHwnd != IntPtr.Zero;
 
-        /// <summary>True when the game window is the foreground window.</summary>
+        /// <summary>
+        /// True when the game is the effective foreground target:
+        /// found, not minimized, and foreground window is the game HWND or same PID.
+        /// PalAssist itself never counts as game-focused.
+        /// </summary>
         public bool IsFocused { get; private set; }
 
         /// <summary>
@@ -38,27 +46,88 @@ namespace PalAssist.Core
         /// <summary>Current bounds of the game window.</summary>
         public NativeMethods.RECT Bounds { get; private set; }
 
+        /// <summary>Game process id when found; 0 otherwise.</summary>
+        public uint TargetProcessId => _targetProcessId;
+
         /// <summary>Raised when the window bounds change (move / resize).</summary>
         public event Action<NativeMethods.RECT>? BoundsChanged;
 
         /// <summary>Raised when the game is found or lost.</summary>
         public event Action<bool>? GameDetected;
 
-        /// <summary>Raised when the game gains or loses foreground focus.</summary>
+        /// <summary>Raised when <see cref="IsFocused"/> changes.</summary>
         public event Action<bool>? FocusChanged;
 
-        public WindowTracker(int pollMs = 250)
+        /// <param name="pollMs">Backup poll interval (default 100 ms).</param>
+        public WindowTracker(int pollMs = 100)
         {
+            _ownProcessId = NativeMethods.GetCurrentProcessId();
+            _winEventProc = OnWinEvent;
+
             _timer = new System.Timers.Timer(pollMs);
             _timer.Elapsed += OnTick;
             _timer.AutoReset = true;
         }
 
-        public void Start() => _timer.Start();
-        public void Stop()  => _timer.Stop();
+        public void Start()
+        {
+            try
+            {
+                _winEventHook = NativeMethods.SetWinEventHook(
+                    NativeMethods.EVENT_SYSTEM_FOREGROUND,
+                    NativeMethods.EVENT_SYSTEM_FOREGROUND,
+                    IntPtr.Zero,
+                    _winEventProc,
+                    0,
+                    0,
+                    NativeMethods.WINEVENT_OUTOFCONTEXT);
+            }
+            catch
+            {
+                _winEventHook = IntPtr.Zero;
+            }
+
+            _timer.Start();
+            // Immediate evaluate so UI is correct before first timer tick.
+            EvaluateFocus(raiseEvents: true);
+        }
+
+        public void Stop()
+        {
+            _timer.Stop();
+            Unhook();
+        }
+
+        private void Unhook()
+        {
+            if (_winEventHook != IntPtr.Zero)
+            {
+                try { NativeMethods.UnhookWinEvent(_winEventHook); }
+                catch { /* ignore */ }
+                _winEventHook = IntPtr.Zero;
+            }
+        }
+
+        private void OnWinEvent(
+            IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+            int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+        {
+            if (_disposed) return;
+            // Only care about foreground changes; re-evaluate fully.
+            try
+            {
+                EvaluateFocus(raiseEvents: true);
+            }
+            catch
+            {
+                // Never throw out of a native callback.
+            }
+        }
 
         private void OnTick(object? sender, ElapsedEventArgs e)
         {
+            if (_disposed) return;
+
             // Drop stale handle (game crashed / closed without clean exit)
             if (_targetHwnd != IntPtr.Zero && !NativeMethods.IsWindow(_targetHwnd))
             {
@@ -73,6 +142,7 @@ namespace PalAssist.Core
             {
                 ClearGameState();
                 GameDetected?.Invoke(false);
+                EvaluateFocus(raiseEvents: true);
                 return;
             }
 
@@ -84,27 +154,71 @@ namespace PalAssist.Core
                 Platform = DetectPlatform(hwnd, _targetProcessId);
                 GameDetected?.Invoke(true);
             }
-
-            if (_targetHwnd == IntPtr.Zero) return;
-
-            // Update focus state
-            bool focused = NativeMethods.GetForegroundWindow() == _targetHwnd;
-            if (focused != IsFocused)
+            else if (hwnd != IntPtr.Zero && hwnd != _targetHwnd)
             {
-                IsFocused = focused;
-                FocusChanged?.Invoke(focused);
+                // Window handle changed (restart / multi-instance)
+                _targetHwnd = hwnd;
+                NativeMethods.GetWindowThreadProcessId(hwnd, out _targetProcessId);
+                Platform = DetectPlatform(hwnd, _targetProcessId);
             }
 
-            // Update bounds
-            if (NativeMethods.GetWindowRect(_targetHwnd, out var rect))
+            if (_targetHwnd != IntPtr.Zero)
             {
-                if (rect.Left != Bounds.Left || rect.Top != Bounds.Top ||
-                    rect.Right != Bounds.Right || rect.Bottom != Bounds.Bottom)
+                if (NativeMethods.GetWindowRect(_targetHwnd, out var rect))
                 {
-                    Bounds = rect;
-                    BoundsChanged?.Invoke(rect);
+                    if (rect.Left != Bounds.Left || rect.Top != Bounds.Top ||
+                        rect.Right != Bounds.Right || rect.Bottom != Bounds.Bottom)
+                    {
+                        Bounds = rect;
+                        BoundsChanged?.Invoke(rect);
+                    }
                 }
             }
+
+            EvaluateFocus(raiseEvents: true);
+        }
+
+        /// <summary>
+        /// Computes whether Palworld is the effective active target and raises FocusChanged.
+        /// </summary>
+        private void EvaluateFocus(bool raiseEvents)
+        {
+            bool focused = ComputeIsGameActive();
+            if (focused == IsFocused) return;
+            IsFocused = focused;
+            if (raiseEvents)
+                FocusChanged?.Invoke(focused);
+        }
+
+        private bool ComputeIsGameActive()
+        {
+            if (_targetHwnd == IntPtr.Zero || !NativeMethods.IsWindow(_targetHwnd))
+                return false;
+
+            if (NativeMethods.IsIconic(_targetHwnd))
+                return false;
+
+            IntPtr fg = NativeMethods.GetForegroundWindow();
+            if (fg == IntPtr.Zero)
+                return false;
+
+            // Exact game window
+            if (fg == _targetHwnd)
+                return true;
+
+            NativeMethods.GetWindowThreadProcessId(fg, out uint fgPid);
+            if (fgPid == 0)
+                return false;
+
+            // Never treat our own process as "game focused"
+            if (fgPid == _ownProcessId)
+                return false;
+
+            // Same process as game (child / companion windows)
+            if (_targetProcessId != 0 && fgPid == _targetProcessId)
+                return true;
+
+            return false;
         }
 
         private void ClearGameState()
@@ -119,12 +233,8 @@ namespace PalAssist.Core
             }
         }
 
-        /// <summary>
-        /// Tries to find the game window by known process names, then a strict title fallback.
-        /// </summary>
         private static IntPtr FindGameWindow()
         {
-            // Strategy 1: known Unreal shipping process names
             foreach (string name in ProcessNames)
             {
                 Process[] procs;
@@ -157,8 +267,6 @@ namespace PalAssist.Core
                 }
             }
 
-            // Strategy 2: strict title fallback — only titles starting with "Palworld"
-            // (never bare "Pal…", which caused false positives).
             IntPtr found = IntPtr.Zero;
             NativeMethods.EnumWindows((hWnd, _) =>
             {
@@ -172,7 +280,6 @@ namespace PalAssist.Core
                     return true;
 
                 NativeMethods.GetWindowThreadProcessId(hWnd, out uint pid);
-                // Prefer a known shipping process; otherwise accept the first Palworld title.
                 if (pid != 0 && IsKnownGameProcess(pid))
                 {
                     found = hWnd;
@@ -206,9 +313,6 @@ namespace PalAssist.Core
             return false;
         }
 
-        /// <summary>
-        /// Classifies Steam / Epic / Xbox from the process image path.
-        /// </summary>
         private static string? DetectPlatform(IntPtr hwnd, uint processId)
         {
             if (processId == 0)
@@ -218,7 +322,6 @@ namespace PalAssist.Core
             string? path = NativeMethods.TryGetProcessImagePath(processId);
             if (string.IsNullOrEmpty(path))
             {
-                // Fallback: try Process.MainModule (often fails on Store apps)
                 try
                 {
                     using var p = Process.GetProcessById((int)processId);
@@ -232,7 +335,6 @@ namespace PalAssist.Core
 
             if (string.IsNullOrEmpty(path)) return null;
 
-            // Normalize for case-insensitive substring checks
             string lower = path.Replace('/', '\\').ToLowerInvariant();
 
             if (lower.Contains("steamapps") || lower.Contains("\\steam\\"))
@@ -252,6 +354,7 @@ namespace PalAssist.Core
             _disposed = true;
             _timer.Stop();
             _timer.Dispose();
+            Unhook();
         }
     }
 }

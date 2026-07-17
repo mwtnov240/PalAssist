@@ -84,11 +84,11 @@
                         <StackPanel Grid.Column="0">
                             <TextBlock Text="PalAssist"
                                        FontFamily="Segoe UI" FontSize="20" FontWeight="Bold"
-                                       Foreground="{StaticResource AccentCyanBrush}"/>
+                                       Foreground="{DynamicResource AccentCyanBrush}"/>
                             <TextBlock x:Name="HeaderVersionText"
                                        Text="External Input Assist"
                                        FontFamily="Segoe UI" FontSize="10"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                        Margin="0,2,0,0"/>
                         </StackPanel>
 
@@ -96,17 +96,17 @@
                         <StackPanel Grid.Column="1" Orientation="Horizontal"
                                     VerticalAlignment="Center" Margin="0,0,14,0">
                             <Ellipse x:Name="GameDot" Width="8" Height="8"
-                                     Fill="{StaticResource AccentRedBrush}" Margin="0,0,6,0"/>
+                                     Fill="{DynamicResource AccentRedBrush}" Margin="0,0,6,0"/>
                             <TextBlock x:Name="GameStatusText" Text="Palworld not found"
                                        FontFamily="Segoe UI" FontSize="11"
-                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                                       Foreground="{DynamicResource TextSecondaryBrush}"/>
                         </StackPanel>
 
                         <!-- Close button -->
                         <Button Grid.Column="2" x:Name="CloseBtn"
                                 Content="×" Width="28" Height="28"
                                 FontFamily="Segoe UI" FontSize="16" FontWeight="Bold"
-                                Foreground="{StaticResource TextSecondaryBrush}"
+                                Foreground="{DynamicResource TextSecondaryBrush}"
                                 VerticalAlignment="Center"
                                 Cursor="Hand"
                                 Click="CloseBtn_Click">
@@ -185,16 +185,16 @@
                                 <StackPanel Grid.Column="0">
                                     <StackPanel Orientation="Horizontal">
                                         <Ellipse x:Name="WorkAssistDot" Width="9" Height="9"
-                                                 Fill="{StaticResource AccentRedBrush}"
+                                                 Fill="{DynamicResource AccentRedBrush}"
                                                  Margin="0,0,8,0" VerticalAlignment="Center"/>
                                         <TextBlock Text="Work Assist"
                                                    FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
                                     </StackPanel>
                                     <TextBlock x:Name="WorkAssistSubtitle"
                                                Text="Continuously holds the F key  ·  Hotkey: F1"
                                                FontFamily="Segoe UI" FontSize="10"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
                                                Margin="17,3,0,0"/>
                                 </StackPanel>
                                 <ToggleButton x:Name="WorkAssistToggle" Grid.Column="1"
@@ -206,11 +206,53 @@
 
                             <!-- Show HUD Indicator checkbox -->
                             <CheckBox x:Name="WorkAssistShowHudCheck" Content="Show HUD Indicator"
-                                      Foreground="{StaticResource TextSecondaryBrush}"
+                                      Foreground="{DynamicResource TextSecondaryBrush}"
                                       FontFamily="Segoe UI" FontSize="11"
                                       Margin="17,6,0,0"
                                       Checked="WorkAssistShowHudCheck_Changed"
                                       Unchecked="WorkAssistShowHudCheck_Changed"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ── Focus Lock (stable) ── -->
+                    <Border Margin="14,2,14,6" Padding="14,12" CornerRadius="10">
+                        <Border.Background>
+                            <SolidColorBrush Color="#1A1A2E" Opacity="0.7"/>
+                        </Border.Background>
+                        <StackPanel>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse x:Name="FocusLockDot" Width="9" Height="9"
+                                                 Fill="{DynamicResource AccentRedBrush}"
+                                                 Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Focus Lock"
+                                                   FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Release held keys when Palworld is not focused"
+                                               FontFamily="Segoe UI" FontSize="10"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Margin="17,3,0,0"/>
+                                </StackPanel>
+                                <ToggleButton x:Name="FocusLockToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              VerticalAlignment="Center"
+                                              Checked="FocusLockToggle_Changed"
+                                              Unchecked="FocusLockToggle_Changed"
+                                              ToolTip="When on, held keys release on alt-tab and resume when you return to the game"/>
+                            </Grid>
+                            <StackPanel Orientation="Horizontal" Margin="17,0,0,0">
+                                <Ellipse x:Name="FocusLockStatusDot" Width="8" Height="8" Margin="0,0,6,0"
+                                         Fill="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="FocusLockStatusText" Text="Focus lock off"
+                                           FontFamily="Segoe UI" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 
@@ -230,16 +272,16 @@
                                 <StackPanel Grid.Column="0">
                                     <StackPanel Orientation="Horizontal">
                                         <Ellipse x:Name="SprintDot" Width="9" Height="9"
-                                                 Fill="{StaticResource AccentRedBrush}"
+                                                 Fill="{DynamicResource AccentRedBrush}"
                                                  Margin="0,0,8,0" VerticalAlignment="Center"/>
                                         <TextBlock Text="Sprint Assist"
                                                    FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
                                     </StackPanel>
                                     <TextBlock x:Name="SprintSubtitle"
                                                Text="Auto forward + sprint cycles  ·  Hotkey: F2"
                                                FontFamily="Segoe UI" FontSize="10"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
                                                Margin="17,3,0,0"/>
                                 </StackPanel>
                                 <ToggleButton x:Name="SprintToggle" Grid.Column="1"
@@ -252,7 +294,7 @@
                             <!-- Status line -->
                             <TextBlock x:Name="SprintStatusText" Text="Idle"
                                        FontFamily="Segoe UI" FontSize="11" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                        Margin="17,8,0,4"/>
 
                             <!-- Sprint Duration slider -->
@@ -263,7 +305,7 @@
                                     <ColumnDefinition Width="38"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Sprint:" FontFamily="Segoe UI" FontSize="11"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <Slider x:Name="SprintDurSlider" Grid.Column="1"
                                         Style="{StaticResource ModernSlider}"
@@ -272,7 +314,7 @@
                                         ValueChanged="SprintDurSlider_Changed"/>
                                 <TextBlock x:Name="SprintDurLabel" Grid.Column="2"
                                            Text="8.0s" FontFamily="Segoe UI" FontSize="11"
-                                           Foreground="{StaticResource AccentCyanBrush}"
+                                           Foreground="{DynamicResource AccentCyanBrush}"
                                            VerticalAlignment="Center" HorizontalAlignment="Right"/>
                             </Grid>
 
@@ -284,7 +326,7 @@
                                     <ColumnDefinition Width="38"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Recovery:" FontFamily="Segoe UI" FontSize="11"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <Slider x:Name="RecoveryDurSlider" Grid.Column="1"
                                         Style="{StaticResource ModernSlider}"
@@ -293,13 +335,13 @@
                                         ValueChanged="RecoveryDurSlider_Changed"/>
                                 <TextBlock x:Name="RecoveryDurLabel" Grid.Column="2"
                                            Text="4.0s" FontFamily="Segoe UI" FontSize="11"
-                                           Foreground="{StaticResource AccentCyanBrush}"
+                                           Foreground="{DynamicResource AccentCyanBrush}"
                                            VerticalAlignment="Center" HorizontalAlignment="Right"/>
                             </Grid>
 
                             <!-- Pause when dodging checkbox -->
                             <CheckBox x:Name="PauseDodgeCheck" Content="Pause when dodging (Ctrl)"
-                                      Foreground="{StaticResource TextSecondaryBrush}"
+                                      Foreground="{DynamicResource TextSecondaryBrush}"
                                       FontFamily="Segoe UI" FontSize="11"
                                       Margin="17,6,0,0"
                                       Checked="PauseDodgeCheck_Changed"
@@ -321,10 +363,10 @@
                                 <StackPanel Grid.Column="0">
                                     <TextBlock Text="Crosshair"
                                                FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
                                     <TextBlock Text="Fixed center reticle over the game"
                                                FontFamily="Segoe UI" FontSize="10"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
                                                Margin="0,3,0,0"/>
                                 </StackPanel>
                                 <ToggleButton x:Name="CrosshairToggle" Grid.Column="1"
@@ -341,7 +383,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="Style" FontFamily="Segoe UI" FontSize="12"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
                                                VerticalAlignment="Center"/>
                                     <ComboBox x:Name="CrosshairStyleCombo" Grid.Column="1"
                                               Style="{StaticResource DarkCombo}" Width="120"
@@ -357,7 +399,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="Size" FontFamily="Segoe UI" FontSize="12"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
                                                VerticalAlignment="Center"/>
                                     <ComboBox x:Name="CrosshairSizeCombo" Grid.Column="1"
                                               Style="{StaticResource DarkCombo}" Width="120"
@@ -373,7 +415,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="Color" FontFamily="Segoe UI" FontSize="12"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
                                                VerticalAlignment="Center"/>
                                     <ComboBox x:Name="CrosshairColorCombo" Grid.Column="1"
                                               Style="{StaticResource DarkCombo}" Width="120"
@@ -383,6 +425,12 @@
                                         <ComboBoxItem Content="Red"/>
                                         <ComboBoxItem Content="Green"/>
                                         <ComboBoxItem Content="Yellow"/>
+                                        <ComboBoxItem Content="Magenta"/>
+                                        <ComboBoxItem Content="Orange"/>
+                                        <ComboBoxItem Content="Blue"/>
+                                        <ComboBoxItem Content="Pink"/>
+                                        <ComboBoxItem Content="Black"/>
+                                        <ComboBoxItem Content="Lime"/>
                                     </ComboBox>
                                 </Grid>
                             </StackPanel>
@@ -402,11 +450,11 @@
                             <TextBlock Text="🤖" FontSize="28" HorizontalAlignment="Center" Margin="0,0,0,8"/>
                             <TextBlock Text="AI Assists"
                                        FontFamily="Segoe UI" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
                                        HorizontalAlignment="Center"/>
                             <TextBlock Text="Coming in a future update"
                                        FontFamily="Segoe UI" FontSize="12"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                        HorizontalAlignment="Center" Margin="0,4,0,0"/>
                         </StackPanel>
                     </Border>
@@ -427,40 +475,6 @@
                                    Foreground="#FFB74D" TextWrapping="Wrap"/>
                     </Border>
 
-                    <!-- Focus Lock -->
-                    <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
-                        <Border.Background>
-                            <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
-                        </Border.Background>
-                        <StackPanel>
-                            <Grid Margin="0,0,0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="Focus Lock" FontFamily="Segoe UI" FontSize="13"
-                                               FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="Pause assists when Palworld is not focused"
-                                               FontFamily="Segoe UI" FontSize="11"
-                                               Foreground="{StaticResource TextSecondaryBrush}"/>
-                                </StackPanel>
-                                <ToggleButton x:Name="BetaFocusLockToggle" Grid.Column="1"
-                                              Style="{StaticResource ToggleSwitchStyle}"
-                                              Checked="BetaFocusLockToggle_Changed"
-                                              Unchecked="BetaFocusLockToggle_Changed"
-                                              ToolTip="When on, held keys release on alt-tab and resume when you return to the game"/>
-                            </Grid>
-                            <StackPanel Orientation="Horizontal">
-                                <Ellipse x:Name="BetaFocusDot" Width="8" Height="8" Margin="0,0,6,0"
-                                         Fill="{StaticResource AccentRedBrush}" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="BetaFocusStatusText" Text="Focus lock off"
-                                           FontFamily="Segoe UI" FontSize="11"
-                                           Foreground="{StaticResource TextSecondaryBrush}"/>
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-
                     <!-- Work Profiles -->
                     <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
                         <Border.Background>
@@ -474,10 +488,10 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <TextBlock Text="Work Profiles" FontFamily="Segoe UI" FontSize="13"
-                                               FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                                     <TextBlock Text="Multi-key hold (separate from Assists → Work Assist)"
                                                FontFamily="Segoe UI" FontSize="11"
-                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
                                 </StackPanel>
                                 <ToggleButton x:Name="BetaProfileWorkToggle" Grid.Column="1"
                                               Style="{StaticResource ToggleSwitchStyle}"
@@ -490,7 +504,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Profile" FontFamily="Segoe UI" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            VerticalAlignment="Center"/>
                                 <ComboBox x:Name="BetaProfileCombo" Grid.Column="1"
                                           Style="{StaticResource DarkCombo}" Width="150"
@@ -502,11 +516,11 @@
                             </Grid>
                             <TextBlock x:Name="BetaProfileKeysText" Text="Holds: F"
                                        FontFamily="Segoe UI" FontSize="11"
-                                       Foreground="{StaticResource AccentCyanBrush}" Margin="0,0,0,6"/>
+                                       Foreground="{DynamicResource AccentCyanBrush}" Margin="0,0,0,6"/>
                             <StackPanel x:Name="BetaCustomKeysPanel" Visibility="Collapsed">
                                 <TextBlock Text="Custom keys (click to set, max 3)"
                                            FontFamily="Segoe UI" FontSize="11"
-                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
                                 <StackPanel Orientation="Horizontal">
                                     <Button x:Name="BetaCustomKey1Btn" Content="F" Style="{StaticResource RebindBtnStyle}"
                                             Margin="0,0,6,0" Click="BetaCustomKey1Btn_Click"/>
@@ -530,18 +544,18 @@
                         </Border.Background>
                         <StackPanel>
                             <TextBlock Text="Session Timer" FontFamily="Segoe UI" FontSize="13"
-                                       FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,4"/>
                             <TextBlock x:Name="BetaSessionElapsedText" Text="Session 00:00:00"
                                        FontFamily="Segoe UI" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{StaticResource AccentCyanBrush}" Margin="0,0,0,8"/>
+                                       Foreground="{DynamicResource AccentCyanBrush}" Margin="0,0,0,8"/>
                             <Grid Margin="0,0,0,6">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Remind every" FontFamily="Segoe UI" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            VerticalAlignment="Center"/>
                                 <ComboBox x:Name="BetaSessionRemindCombo" Grid.Column="1"
                                           Style="{StaticResource DarkCombo}" Width="100"
@@ -556,7 +570,7 @@
                             </Grid>
                             <CheckBox x:Name="BetaSessionAutoStopCheck"
                                       Content="Auto-stop all assists on reminder"
-                                      Foreground="{StaticResource TextSecondaryBrush}"
+                                      Foreground="{DynamicResource TextSecondaryBrush}"
                                       FontFamily="Segoe UI" FontSize="11" Margin="0,0,0,8"
                                       Checked="BetaSessionAutoStopCheck_Changed"
                                       Unchecked="BetaSessionAutoStopCheck_Changed"/>
@@ -580,11 +594,11 @@
                         </Border.Background>
                         <StackPanel>
                             <TextBlock Text="Setup Wizard" FontFamily="Segoe UI" FontSize="13"
-                                       FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,4"/>
                             <TextBlock Text="Rebind menu and work hotkeys step by step"
                                        FontFamily="Segoe UI" FontSize="11"
-                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8"/>
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,8"/>
                             <StackPanel x:Name="BetaWizardIdlePanel">
                                 <Button Content="Run Setup Wizard" Style="{StaticResource RebindBtnStyle}"
                                         HorizontalAlignment="Left" Click="BetaWizardStartBtn_Click"/>
@@ -592,10 +606,10 @@
                             <StackPanel x:Name="BetaWizardActivePanel" Visibility="Collapsed">
                                 <TextBlock x:Name="BetaWizardStepText" Text="Step 1 of 3"
                                            FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{StaticResource AccentCyanBrush}" Margin="0,0,0,4"/>
+                                           Foreground="{DynamicResource AccentCyanBrush}" Margin="0,0,0,4"/>
                                 <TextBlock x:Name="BetaWizardPromptText" Text="Press a key for Menu toggle…"
                                            FontFamily="Segoe UI" FontSize="12"
-                                           Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,8"
                                            TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal">
                                     <Button Content="Skip" Style="{StaticResource RebindBtnStyle}"
@@ -611,7 +625,10 @@
                 <!-- ════════════════════════════════════════
                      TAB CONTENT: Settings
                      ════════════════════════════════════════ -->
-                <StackPanel x:Name="PanelSettings" Visibility="Collapsed">
+                <ScrollViewer x:Name="PanelSettings" Visibility="Collapsed"
+                              VerticalScrollBarVisibility="Auto" MaxHeight="520"
+                              HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
 
                     <!-- ── Hotkeys Section ── -->
                     <Border Margin="14,10,14,6" Padding="14,10" CornerRadius="10">
@@ -620,7 +637,7 @@
                         </Border.Background>
                         <StackPanel>
                             <TextBlock Text="Hotkeys" FontFamily="Segoe UI" FontSize="13"
-                                       FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,8"/>
                             <!-- Menu Toggle -->
                             <Grid Margin="0,0,0,6">
@@ -629,7 +646,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Menu Toggle" FontFamily="Segoe UI" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            VerticalAlignment="Center"/>
                                 <Button x:Name="RebindMenuBtn" Grid.Column="1"
                                         Content="Insert" Style="{StaticResource RebindBtnStyle}"
@@ -642,7 +659,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Work Assist Toggle" FontFamily="Segoe UI" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            VerticalAlignment="Center"/>
                                 <Button x:Name="RebindWorkAssistBtn" Grid.Column="1"
                                         Content="F1" Style="{StaticResource RebindBtnStyle}"
@@ -655,7 +672,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Sprint Toggle" FontFamily="Segoe UI" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            VerticalAlignment="Center"/>
                                 <Button x:Name="RebindSprintBtn" Grid.Column="1"
                                         Content="F2" Style="{StaticResource RebindBtnStyle}"
@@ -671,7 +688,7 @@
                         </Border.Background>
                         <StackPanel>
                             <TextBlock Text="HUD / Indicators" FontFamily="Segoe UI" FontSize="13"
-                                       FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,8"/>
                             <!-- Position preset -->
                             <Grid Margin="0,0,0,8">
@@ -680,7 +697,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Position" FontFamily="Segoe UI" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            VerticalAlignment="Center"/>
                                 <ComboBox x:Name="HudPresetCombo" Grid.Column="1"
                                           Style="{StaticResource DarkCombo}" Width="120"
@@ -700,12 +717,163 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Make Indicator Draggable" FontFamily="Segoe UI" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            VerticalAlignment="Center"/>
                                 <ToggleButton x:Name="HudDraggableToggle" Grid.Column="1"
                                               Style="{StaticResource ToggleSwitchStyle}"
                                               Checked="HudDraggableToggle_Changed"
                                               Unchecked="HudDraggableToggle_Changed"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ── Appearance ── -->
+                    <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
+                        <Border.Background>
+                            <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
+                        </Border.Background>
+                        <StackPanel>
+                            <TextBlock Text="Appearance" FontFamily="Segoe UI" FontSize="13"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
+                                       Margin="0,0,0,8"/>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="40"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Opacity" FontFamily="Segoe UI" FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <Slider x:Name="UiOpacitySlider" Grid.Column="1"
+                                        Style="{StaticResource ModernSlider}"
+                                        Minimum="0.5" Maximum="1.0" Value="0.94"
+                                        TickFrequency="0.02" IsSnapToTickEnabled="True"
+                                        ValueChanged="UiOpacitySlider_Changed"/>
+                                <TextBlock x:Name="UiOpacityLabel" Grid.Column="2"
+                                           Text="94%" FontFamily="Segoe UI" FontSize="11"
+                                           Foreground="{DynamicResource AccentCyanBrush}"
+                                           VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                            </Grid>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="UI Scale" FontFamily="Segoe UI" FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <ComboBox x:Name="UiScaleCombo" Grid.Column="1"
+                                          Style="{StaticResource DarkCombo}" Width="100"
+                                          SelectionChanged="UiScaleCombo_Changed">
+                                    <ComboBoxItem Content="85%" Tag="0.85"/>
+                                    <ComboBoxItem Content="100%" Tag="1.0" IsSelected="True"/>
+                                    <ComboBoxItem Content="115%" Tag="1.15"/>
+                                    <ComboBoxItem Content="130%" Tag="1.3"/>
+                                </ComboBox>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Color Theme" FontFamily="Segoe UI" FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <ComboBox x:Name="UiThemeCombo" Grid.Column="1"
+                                          Style="{StaticResource DarkCombo}" Width="100"
+                                          SelectionChanged="UiThemeCombo_Changed">
+                                    <ComboBoxItem Content="Cyan" IsSelected="True"/>
+                                    <ComboBoxItem Content="Purple"/>
+                                    <ComboBoxItem Content="Green"/>
+                                    <ComboBoxItem Content="Amber"/>
+                                    <ComboBoxItem Content="Red"/>
+                                </ComboBox>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ── Sound ── -->
+                    <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
+                        <Border.Background>
+                            <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
+                        </Border.Background>
+                        <StackPanel>
+                            <TextBlock Text="Sound" FontFamily="Segoe UI" FontSize="13"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
+                                       Margin="0,0,0,8"/>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Enable Sounds" FontFamily="Segoe UI" FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <ToggleButton x:Name="SoundEnabledToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              Checked="SoundSettings_Changed"
+                                              Unchecked="SoundSettings_Changed"/>
+                            </Grid>
+                            <CheckBox x:Name="SoundOnToggleCheck" Content="Play on assist toggle"
+                                      Foreground="{DynamicResource TextSecondaryBrush}"
+                                      FontFamily="Segoe UI" FontSize="11" Margin="0,0,0,4"
+                                      Checked="SoundSettings_Changed" Unchecked="SoundSettings_Changed"/>
+                            <CheckBox x:Name="SoundOnFocusCheck" Content="Play on focus lock suspend/resume"
+                                      Foreground="{DynamicResource TextSecondaryBrush}"
+                                      FontFamily="Segoe UI" FontSize="11" Margin="0,0,0,4"
+                                      Checked="SoundSettings_Changed" Unchecked="SoundSettings_Changed"/>
+                            <CheckBox x:Name="SoundOnUpdateCheck" Content="Play when update is available"
+                                      Foreground="{DynamicResource TextSecondaryBrush}"
+                                      FontFamily="Segoe UI" FontSize="11"
+                                      Checked="SoundSettings_Changed" Unchecked="SoundSettings_Changed"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ── System Tray ── -->
+                    <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
+                        <Border.Background>
+                            <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
+                        </Border.Background>
+                        <StackPanel>
+                            <TextBlock Text="System Tray" FontFamily="Segoe UI" FontSize="13"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
+                                       Margin="0,0,0,8"/>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Show Tray Icon" FontFamily="Segoe UI" FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                    <TextBlock Text="Right-click for Show Menu / Exit"
+                                               FontFamily="Segoe UI" FontSize="10"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <ToggleButton x:Name="TrayEnabledToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              VerticalAlignment="Center"
+                                              Checked="TraySettings_Changed"
+                                              Unchecked="TraySettings_Changed"/>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Minimize to Tray" FontFamily="Segoe UI" FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                    <TextBlock Text="Taskbar close hides the app instead of exiting"
+                                               FontFamily="Segoe UI" FontSize="10"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <ToggleButton x:Name="MinimizeToTrayToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              VerticalAlignment="Center"
+                                              Checked="TraySettings_Changed"
+                                              Unchecked="TraySettings_Changed"/>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -717,7 +885,7 @@
                         </Border.Background>
                         <StackPanel>
                             <TextBlock Text="Experimental" FontFamily="Segoe UI" FontSize="13"
-                                       FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,8"/>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -726,10 +894,10 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0">
                                     <TextBlock Text="Enable Beta" FontFamily="Segoe UI" FontSize="12"
-                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
                                     <TextBlock Text="Unlocks the Beta tab (experimental / unstable)"
                                                FontFamily="Segoe UI" FontSize="10"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
                                                Margin="0,2,0,0"/>
                                 </StackPanel>
                                 <ToggleButton x:Name="BetaEnabledToggle" Grid.Column="1"
@@ -744,7 +912,7 @@
                     <!-- ── Save Settings Button ── -->
                     <Button x:Name="SaveSettingsBtn" Margin="14,2,14,6" Height="34"
                             Content="Save Settings" Style="{StaticResource RebindBtnStyle}"
-                            Background="#0F3460" Foreground="{StaticResource TextPrimaryBrush}"
+                            Background="#0F3460" Foreground="{DynamicResource TextPrimaryBrush}"
                             BorderThickness="0" Click="SaveSettingsBtn_Click"
                             ToolTip="Write current settings to config.json">
                         <Button.Template>
@@ -771,16 +939,16 @@
                         </Border.Background>
                         <StackPanel>
                             <TextBlock Text="About" FontFamily="Segoe UI" FontSize="13"
-                                       FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,0,0,6"/>
                             <TextBlock x:Name="VersionText" Text="PalAssist" FontFamily="Segoe UI" FontSize="12"
-                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                                       Foreground="{DynamicResource TextSecondaryBrush}"/>
                             <TextBlock Text="External Input Assist • No memory reading"
                                        FontFamily="Segoe UI" FontSize="10"
-                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,4"/>
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,4"/>
                             <TextBlock x:Name="UpdateStatusText" Text=""
                                        FontFamily="Segoe UI" FontSize="10"
-                                       Foreground="{StaticResource AccentCyanBrush}"
+                                       Foreground="{DynamicResource AccentCyanBrush}"
                                        TextWrapping="Wrap" Margin="0,0,0,6"/>
                             <StackPanel Orientation="Horizontal">
                                 <Button x:Name="UpdateBtn" Content="Check for Updates"
@@ -789,11 +957,15 @@
                                 <Button x:Name="InstallUpdateBtn" Content="Install &amp; Restart"
                                         Style="{StaticResource RebindBtnStyle}"
                                         Click="InstallUpdateBtn_Click"
-                                        Visibility="Collapsed" IsEnabled="false"/>
+                                        Visibility="Collapsed" IsEnabled="false" Margin="0,0,8,0"/>
+                                <Button x:Name="ChangelogBtn" Content="What's New"
+                                        Style="{StaticResource RebindBtnStyle}"
+                                        Click="ChangelogBtn_Click"/>
                             </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
+                </ScrollViewer>
 
                 <!-- ── Footer ── -->
                 <Border CornerRadius="0,0,16,16" Padding="18,8">
@@ -801,17 +973,17 @@
                         <SolidColorBrush Color="#0F3460" Opacity="0.4"/>
                     </Border.Background>
                     <TextBlock FontFamily="Segoe UI" FontSize="10"
-                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
                                TextAlignment="Center">
                         <Run x:Name="FooterMenuKey" Text="Insert" FontWeight="Bold"
-                             Foreground="{StaticResource AccentCyanBrush}"/>
+                             Foreground="{DynamicResource AccentCyanBrush}"/>
                         <Run Text=" menu  ·  "/>
                         <Run x:Name="FooterWorkAssistKey" Text="F1" FontWeight="Bold"
-                             Foreground="{StaticResource AccentCyanBrush}"/>
+                             Foreground="{DynamicResource AccentCyanBrush}"/>
                         <Run Text=" work"/>
                         <Run x:Name="FooterSprintSep" Text=""/>
                         <Run x:Name="FooterSprintKey" Text="" FontWeight="Bold"
-                             Foreground="{StaticResource AccentCyanBrush}"/>
+                             Foreground="{DynamicResource AccentCyanBrush}"/>
                         <Run x:Name="FooterSprintLabel" Text=""/>
                     </TextBlock>
                 </Border>

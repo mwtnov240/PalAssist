@@ -14,6 +14,7 @@
         <Color x:Key="TextPrimary">#E0E0E0</Color>
         <Color x:Key="TextSecondary">#90A4AE</Color>
 
+        <!-- ThemeService replaces these brush instances at runtime; use DynamicResource in UI -->
         <SolidColorBrush x:Key="BgDarkBrush" Color="{StaticResource BgDark}" />
         <SolidColorBrush x:Key="BgCardBrush" Color="{StaticResource BgCard}" />
         <SolidColorBrush x:Key="AccentBlueBrush" Color="{StaticResource AccentBlue}" />
@@ -100,7 +101,7 @@
              ══════════════════════════════════════════════ -->
         <Style x:Key="TabBtnStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
@@ -140,7 +141,7 @@
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentCyanBrush}"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -174,14 +175,14 @@
              ══════════════════════════════════════════════ -->
         <Style x:Key="ModernSlider" TargetType="Slider">
             <Setter Property="Height" Value="22"/>
-            <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentCyanBrush}"/>
             <Setter Property="Background" Value="#2A2A4A"/>
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
 
         <Style x:Key="DarkComboItem" TargetType="ComboBoxItem">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
             <Setter Property="Padding" Value="8,4"/>
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontSize" Value="12"/>
@@ -206,7 +207,7 @@
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="#0F3460"/>
-                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                             </Trigger>
                             <MultiTrigger>
                                 <MultiTrigger.Conditions>
@@ -229,7 +230,7 @@
         <Style x:Key="DarkCombo" TargetType="ComboBox">
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
             <Setter Property="Background" Value="#2A2A4A"/>
             <Setter Property="BorderBrush" Value="#3A3A5C"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -271,7 +272,7 @@
                                                 <Border Grid.Column="1" Background="Transparent">
                                                     <Path x:Name="Arrow"
                                                           Data="M 0,0 L 4,4 L 8,0"
-                                                          Stroke="{StaticResource TextSecondaryBrush}"
+                                                          Stroke="{DynamicResource TextSecondaryBrush}"
                                                           StrokeThickness="1.5"
                                                           HorizontalAlignment="Center"
                                                           VerticalAlignment="Center"
@@ -343,7 +344,7 @@
                                 <Setter TargetName="DropDownBorder" Property="MinHeight" Value="40"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
                                 <Setter Property="Opacity" Value="0.55"/>
                             </Trigger>
                             <Trigger Property="IsDropDownOpen" Value="True">
