@@ -98,12 +98,6 @@ namespace PalAssist
         private int _menuCursorForceCount;
         private bool _menuCursorForced;
 
-        // ── Session timer ──
-        private DispatcherTimer? _sessionTimer;
-        private DateTime _sessionStartedUtc;
-        private DateTime _sessionLastRemindUtc;
-        private bool _sessionReminderActive;
-
         // ── Menu drag state ──
         private bool _isDragging;
         private Point _dragStart;
@@ -275,8 +269,6 @@ namespace PalAssist
                 Dispatcher.InvokeAsync(CentreMenuIfNeeded, DispatcherPriority.Loaded);
             }
 
-            // ── Session timer ──
-            StartSessionTimer();
 
             // ── Updates ──
             _updateService = new UpdateService();
@@ -829,17 +821,22 @@ namespace PalAssist
                 _featureManager.Toggle(_profileWork);
 
             if (_configManager != null)
+            {
                 _configManager.Config.BetaProfileWorkEnabled = false;
+                _configManager.Config.BetaSmartWorkAssist = false;
+            }
 
             BetaProfileWorkToggle.IsChecked = false;
+            BetaSmartWorkAssistToggle.IsChecked = false;
+            ApplySmartWorkAssistToFeature(false);
             UpdateProfileKeysLabel();
             UpdateHud();
         }
 
         private void RestoreBetaUiFromConfig(AppConfig cfg)
         {
-            BetaSessionAutoStopCheck.IsChecked = cfg.BetaSessionAutoStopAssists;
-            SetBetaSessionRemindCombo(cfg.BetaSessionRemindMinutes);
+            BetaSmartWorkAssistToggle.IsChecked = cfg.BetaSmartWorkAssist;
+            ApplySmartWorkAssistToFeature(cfg.BetaSmartWorkAssist);
             SetBetaProfileCombo(cfg.BetaActiveProfile);
             RefreshCustomKeyButtons();
             UpdateProfileKeysLabel();
@@ -849,6 +846,24 @@ namespace PalAssist
                 _featureManager.Toggle(_profileWork);
                 BetaProfileWorkToggle.IsChecked = true;
             }
+        }
+
+        private void ApplySmartWorkAssistToFeature(bool enabled)
+        {
+            if (_workAssist != null)
+                _workAssist.SmartPickupEnabled = enabled;
+        }
+
+        private void BetaSmartWorkAssistToggle_Changed(object s, RoutedEventArgs e)
+        {
+            if (_configManager == null) return;
+            bool want = BetaSmartWorkAssistToggle.IsChecked == true
+                        && _configManager.Config.BetaEnabled;
+            _configManager.Config.BetaSmartWorkAssist = want;
+            ApplySmartWorkAssistToFeature(want);
+            if (BetaSmartWorkAssistToggle.IsChecked == true && !want)
+                BetaSmartWorkAssistToggle.IsChecked = false;
+            _configManager.Save();
         }
 
         private void RestoreFocusLockFromConfig(AppConfig cfg)
@@ -894,8 +909,9 @@ namespace PalAssist
             cfg.BetaProfileWorkEnabled = _profileWork?.IsEnabled == true;
             cfg.BetaActiveProfile = GetSelectedProfileId();
             cfg.BetaCustomKeys = string.Join(",", GetCustomKeysFromButtons());
-            cfg.BetaSessionRemindMinutes = GetSelectedRemindMinutes();
-            cfg.BetaSessionAutoStopAssists = BetaSessionAutoStopCheck.IsChecked == true;
+            cfg.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
+                                     && cfg.BetaEnabled;
+            ApplySmartWorkAssistToFeature(cfg.BetaSmartWorkAssist);
             _configManager.Save();
         }
 
@@ -904,14 +920,6 @@ namespace PalAssist
             if (BetaProfileCombo.SelectedItem is ComboBoxItem item && item.Tag is string tag)
                 return tag;
             return "Interact";
-        }
-
-        private int GetSelectedRemindMinutes()
-        {
-            if (BetaSessionRemindCombo.SelectedItem is ComboBoxItem item && item.Tag is string t
-                && int.TryParse(t, out int m))
-                return m;
-            return 30;
         }
 
         private List<string> GetCustomKeysFromButtons()
@@ -952,17 +960,6 @@ namespace PalAssist
                     ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        private void SetBetaSessionRemindCombo(int minutes)
-        {
-            foreach (ComboBoxItem item in BetaSessionRemindCombo.Items)
-            {
-                if (item.Tag is string t && int.TryParse(t, out int m) && m == minutes)
-                {
-                    BetaSessionRemindCombo.SelectedItem = item;
-                    return;
-                }
-            }
-        }
 
         private void UpdateProfileKeysLabel()
         {
@@ -1149,82 +1146,6 @@ namespace PalAssist
             SaveBetaConfig();
         }
 
-        private void StartSessionTimer()
-        {
-            _sessionStartedUtc = DateTime.UtcNow;
-            _sessionLastRemindUtc = _sessionStartedUtc;
-            _sessionReminderActive = false;
-            BetaSessionReminderText.Visibility = Visibility.Collapsed;
-
-            _sessionTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-            _sessionTimer.Tick += (_, _) => OnSessionTick();
-            _sessionTimer.Start();
-            OnSessionTick();
-        }
-
-        private void OnSessionTick()
-        {
-            var elapsed = DateTime.UtcNow - _sessionStartedUtc;
-            BetaSessionElapsedText.Text = $"Session {elapsed:hh\\:mm\\:ss}";
-
-            int minutes = GetSelectedRemindMinutes();
-            if (minutes <= 0 || _sessionReminderActive) return;
-
-            var sinceRemind = DateTime.UtcNow - _sessionLastRemindUtc;
-            if (sinceRemind.TotalMinutes >= minutes)
-                FireSessionReminder();
-        }
-
-        private void FireSessionReminder()
-        {
-            _sessionReminderActive = true;
-            _sessionLastRemindUtc = DateTime.UtcNow;
-            BetaSessionReminderText.Text = $"Session reminder ({GetSelectedRemindMinutes()} min) — take a break?";
-            BetaSessionReminderText.Visibility = Visibility.Visible;
-            _soundService.PlayReminder();
-
-            if (BetaSessionAutoStopCheck.IsChecked == true)
-            {
-                _featureManager?.DisableAll();
-                WorkAssistToggle.IsChecked = false;
-                SprintToggle.IsChecked = false;
-                BetaProfileWorkToggle.IsChecked = false;
-                SyncUI();
-            }
-        }
-
-        private void BetaSessionRemindCombo_Changed(object s, SelectionChangedEventArgs e)
-        {
-            if (_configManager == null) return;
-            // Reset reminder baseline when interval changes
-            _sessionLastRemindUtc = DateTime.UtcNow;
-            _sessionReminderActive = false;
-            BetaSessionReminderText.Visibility = Visibility.Collapsed;
-            SaveBetaConfig();
-        }
-
-        private void BetaSessionAutoStopCheck_Changed(object s, RoutedEventArgs e)
-        {
-            if (_configManager == null) return;
-            SaveBetaConfig();
-        }
-
-        private void BetaSessionResetBtn_Click(object s, RoutedEventArgs e)
-        {
-            _sessionStartedUtc = DateTime.UtcNow;
-            _sessionLastRemindUtc = _sessionStartedUtc;
-            _sessionReminderActive = false;
-            BetaSessionReminderText.Visibility = Visibility.Collapsed;
-            OnSessionTick();
-        }
-
-        private void BetaSessionDismissBtn_Click(object s, RoutedEventArgs e)
-        {
-            _sessionReminderActive = false;
-            _sessionLastRemindUtc = DateTime.UtcNow;
-            BetaSessionReminderText.Visibility = Visibility.Collapsed;
-        }
-
         private void StartSetupWizard()
         {
             _wizardStep = 0;
@@ -1306,8 +1227,9 @@ namespace PalAssist
             cfg.FocusLockEnabled = FocusLockToggle.IsChecked == true;
             cfg.BetaActiveProfile = GetSelectedProfileId();
             cfg.BetaCustomKeys = string.Join(",", GetCustomKeysFromButtons());
-            cfg.BetaSessionRemindMinutes = GetSelectedRemindMinutes();
-            cfg.BetaSessionAutoStopAssists = BetaSessionAutoStopCheck.IsChecked == true;
+            cfg.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
+                                     && cfg.BetaEnabled;
+            ApplySmartWorkAssistToFeature(cfg.BetaSmartWorkAssist);
 
             SyncAppearanceConfigFromUi(cfg);
             SyncSoundConfigFromUi(cfg);
@@ -1717,12 +1639,6 @@ namespace PalAssist
                 AddHudRow("Profile", status, (SolidColorBrush)FindResource("AccentYellowBrush"));
             }
 
-            if (_sessionReminderActive)
-            {
-                anyActive = true;
-                AddHudRow("Session", "Reminder", (SolidColorBrush)FindResource("AccentYellowBrush"));
-            }
-
             HudPanel.Visibility = anyActive ? Visibility.Visible : Visibility.Collapsed;
         }
 
@@ -1908,7 +1824,6 @@ namespace PalAssist
             }
 
             _uiTimer?.Stop();
-            _sessionTimer?.Stop();
             _focusResumeTimer?.Stop();
             _updateCts?.Cancel();
             SetMenuCursorForced(false);
@@ -1924,8 +1839,8 @@ namespace PalAssist
                 _configManager.Config.FocusLockEnabled = FocusLockToggle.IsChecked == true;
                 _configManager.Config.BetaActiveProfile = GetSelectedProfileId();
                 _configManager.Config.BetaCustomKeys = string.Join(",", GetCustomKeysFromButtons());
-                _configManager.Config.BetaSessionRemindMinutes = GetSelectedRemindMinutes();
-                _configManager.Config.BetaSessionAutoStopAssists = BetaSessionAutoStopCheck.IsChecked == true;
+                _configManager.Config.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
+                                                           && _configManager.Config.BetaEnabled;
                 SyncAppearanceConfigFromUi(_configManager.Config);
                 SyncSoundConfigFromUi(_configManager.Config);
                 SyncTrayConfigFromUi(_configManager.Config);

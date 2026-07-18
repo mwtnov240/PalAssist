@@ -537,53 +537,34 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Session Timer -->
+                    <!-- Smart Work Assist -->
                     <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
                         <Border.Background>
                             <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
                         </Border.Background>
                         <StackPanel>
-                            <TextBlock Text="Session Timer" FontFamily="Segoe UI" FontSize="13"
-                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
-                                       Margin="0,0,0,4"/>
-                            <TextBlock x:Name="BetaSessionElapsedText" Text="Session 00:00:00"
-                                       FontFamily="Segoe UI" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource AccentCyanBrush}" Margin="0,0,0,8"/>
-                            <Grid Margin="0,0,0,6">
+                            <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="Remind every" FontFamily="Segoe UI" FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <ComboBox x:Name="BetaSessionRemindCombo" Grid.Column="1"
-                                          Style="{StaticResource DarkCombo}" Width="100"
-                                          SelectionChanged="BetaSessionRemindCombo_Changed">
-                                    <ComboBoxItem Content="Off" Tag="0"/>
-                                    <ComboBoxItem Content="1 min" Tag="1"/>
-                                    <ComboBoxItem Content="15 min" Tag="15"/>
-                                    <ComboBoxItem Content="30 min" Tag="30" IsSelected="True"/>
-                                    <ComboBoxItem Content="45 min" Tag="45"/>
-                                    <ComboBoxItem Content="60 min" Tag="60"/>
-                                </ComboBox>
+                                <StackPanel>
+                                    <TextBlock Text="Smart Work Assist" FontFamily="Segoe UI" FontSize="13"
+                                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="When Work Assist turns on: tap F once, wait 1s, then hold — picks up items on workstations first"
+                                               FontFamily="Segoe UI" FontSize="11"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap" Margin="0,2,8,0"/>
+                                </StackPanel>
+                                <ToggleButton x:Name="BetaSmartWorkAssistToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              VerticalAlignment="Top"
+                                              Checked="BetaSmartWorkAssistToggle_Changed"
+                                              Unchecked="BetaSmartWorkAssistToggle_Changed"/>
                             </Grid>
-                            <CheckBox x:Name="BetaSessionAutoStopCheck"
-                                      Content="Auto-stop all assists on reminder"
-                                      Foreground="{DynamicResource TextSecondaryBrush}"
-                                      FontFamily="Segoe UI" FontSize="11" Margin="0,0,0,8"
-                                      Checked="BetaSessionAutoStopCheck_Changed"
-                                      Unchecked="BetaSessionAutoStopCheck_Changed"/>
-                            <TextBlock x:Name="BetaSessionReminderText" Visibility="Collapsed"
-                                       Text="Session reminder — take a break?"
-                                       FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"
-                                       Foreground="#FFB74D" Margin="0,0,0,8" TextWrapping="Wrap"/>
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="Reset Timer" Style="{StaticResource RebindBtnStyle}"
-                                        Margin="0,0,8,0" Click="BetaSessionResetBtn_Click"/>
-                                <Button Content="Dismiss" Style="{StaticResource RebindBtnStyle}"
-                                        Click="BetaSessionDismissBtn_Click"/>
-                            </StackPanel>
+                            <TextBlock Text="Does not change how you turn Work Assist on/off — only the start sequence when this is enabled."
+                                       FontFamily="Segoe UI" FontSize="10"
+                                       Foreground="#FFB74D" Margin="0,8,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
 

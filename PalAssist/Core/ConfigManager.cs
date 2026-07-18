@@ -312,12 +312,12 @@ namespace PalAssist.Core
         [JsonPropertyName("beta_setupWizardCompleted")]
         public bool BetaSetupWizardCompleted { get; set; } = false;
 
-        /// <summary>Minutes between session reminders. 0 = off.</summary>
-        [JsonPropertyName("beta_sessionRemindMinutes")]
-        public int BetaSessionRemindMinutes { get; set; } = 30;
-
-        [JsonPropertyName("beta_sessionAutoStopAssists")]
-        public bool BetaSessionAutoStopAssists { get; set; } = false;
+        /// <summary>
+        /// When true (and Beta is unlocked), Work Assist taps F once, waits 1s, then holds
+        /// so items on workstations are picked up first.
+        /// </summary>
+        [JsonPropertyName("beta_smartWorkAssist")]
+        public bool BetaSmartWorkAssist { get; set; } = false;
     }
 
     /// <summary>

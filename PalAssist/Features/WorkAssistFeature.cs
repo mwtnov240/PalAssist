@@ -10,6 +10,9 @@ namespace PalAssist.Features
     /// Important: do NOT re-send KeyDown every tick. Palworld's hold-to-work
     /// progress resets if F is "pressed" again each frame, so nothing ever finishes.
     /// We press once and only re-assert if the OS reports F is no longer down.
+    ///
+    /// Smart Work Assist (beta): on enable, tap F once, wait 1s, then hold —
+    /// so items sitting on a workstation are picked up before work starts.
     /// </summary>
     public class WorkAssistFeature : IFeature
     {
@@ -17,6 +20,24 @@ namespace PalAssist.Features
         public string Description => "Continuously holds the F key for work/interactions.";
         public bool   IsEnabled   { get; private set; }
         public bool   IsInputSuspended { get; private set; }
+
+        /// <summary>
+        /// When true, OnEnable runs tap → wait 1s → hold instead of immediate hold.
+        /// Set from Beta → Smart Work Assist; does not change Work Assist on/off UX.
+        /// </summary>
+        public bool SmartPickupEnabled { get; set; }
+
+        private enum WorkPhase
+        {
+            Holding,
+            SmartTap,
+            SmartWait
+        }
+
+        private WorkPhase _phase = WorkPhase.Holding;
+        private readonly Stopwatch _phaseTimer = new();
+        private const double SmartTapDurationSec = 0.05;
+        private const double SmartWaitAfterTapSec = 1.0;
 
         // Safety re-hold if something released F (focus loss, etc.) — not every frame
         private readonly Stopwatch _reassertTimer = new();
@@ -26,14 +47,18 @@ namespace PalAssist.Features
         {
             IsEnabled = true;
             IsInputSuspended = false;
-            PressF();
-            _reassertTimer.Restart();
+
+            if (SmartPickupEnabled)
+                BeginSmartSequence();
+            else
+                BeginHolding();
         }
 
         public void OnDisable()
         {
             IsEnabled = false;
             IsInputSuspended = false;
+            ResetPhase();
             ReleaseF();
             _reassertTimer.Reset();
         }
@@ -42,6 +67,7 @@ namespace PalAssist.Features
         {
             if (!IsEnabled || IsInputSuspended) return;
             IsInputSuspended = true;
+            ResetPhase();
             ReleaseF();
             _reassertTimer.Reset();
         }
@@ -50,25 +76,68 @@ namespace PalAssist.Features
         {
             if (!IsEnabled || !IsInputSuspended) return;
             IsInputSuspended = false;
-            PressF();
-            _reassertTimer.Restart();
+            // Do not re-run smart pickup on focus return (avoids accidental pickups every alt-tab)
+            BeginHolding();
         }
 
         public void Update()
         {
             if (!IsEnabled || IsInputSuspended) return;
 
-            // If F is still held according to the OS, leave it alone.
-            bool fDown = NativeMethods.IsKeyDown(NativeMethods.VK_F);
-            if (fDown)
-                return;
-
-            // Only re-press if F was released (or never registered)
-            if (_reassertTimer.Elapsed.TotalSeconds >= ReassertIntervalSec || !_reassertTimer.IsRunning)
+            switch (_phase)
             {
-                PressF();
-                _reassertTimer.Restart();
+                case WorkPhase.SmartTap:
+                    if (_phaseTimer.Elapsed.TotalSeconds >= SmartTapDurationSec)
+                    {
+                        ReleaseF();
+                        _phase = WorkPhase.SmartWait;
+                        _phaseTimer.Restart();
+                    }
+                    return;
+
+                case WorkPhase.SmartWait:
+                    if (_phaseTimer.Elapsed.TotalSeconds >= SmartWaitAfterTapSec)
+                        BeginHolding();
+                    return;
+
+                case WorkPhase.Holding:
+                default:
+                    // If F is still held according to the OS, leave it alone.
+                    bool fDown = NativeMethods.IsKeyDown(NativeMethods.VK_F);
+                    if (fDown)
+                        return;
+
+                    // Only re-press if F was released (or never registered)
+                    if (_reassertTimer.Elapsed.TotalSeconds >= ReassertIntervalSec || !_reassertTimer.IsRunning)
+                    {
+                        PressF();
+                        _reassertTimer.Restart();
+                    }
+                    return;
             }
+        }
+
+        private void BeginSmartSequence()
+        {
+            ReleaseF();
+            PressF();
+            _phase = WorkPhase.SmartTap;
+            _phaseTimer.Restart();
+            _reassertTimer.Reset();
+        }
+
+        private void BeginHolding()
+        {
+            _phase = WorkPhase.Holding;
+            _phaseTimer.Reset();
+            PressF();
+            _reassertTimer.Restart();
+        }
+
+        private void ResetPhase()
+        {
+            _phase = WorkPhase.Holding;
+            _phaseTimer.Reset();
         }
 
         private static void PressF()
