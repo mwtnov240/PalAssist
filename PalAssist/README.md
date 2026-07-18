@@ -1,4 +1,4 @@
-# PalAssist V1.3
+# PalAssist V1.4
 
 A modern, external overlay & input-assist tool for **Palworld** on Windows.
 
@@ -81,9 +81,9 @@ Output: `PalAssist\bin\Release\net8.0-windows\PalAssist.exe`
 | Tab | Contents |
 |---|---|
 | **Assists** | Work Assist, Focus Lock, Crosshair (Sprint Assist hidden while disabled) |
-| **AI Assists** | Placeholder — "Coming in a future update" |
-| **Beta** | Experimental (opt-in in Settings): Smart Work Assist, Work Profiles, Setup Wizard |
-| **Settings** | Hotkeys, HUD, Appearance, Sound, Tray, Experimental, About + What's New + auto-update |
+| **Beta** | Experimental (opt-in in Settings): Smart Work Assist only |
+| **Settings** | Hotkeys, HUD, Appearance, Sound, Tray, Experimental, About + auto-update |
+| **What's Changed** | Full version history (newest first, scrollable) |
 
 ### Focus Lock
 
@@ -110,7 +110,7 @@ Updates are never force-installed without your confirmation.
 
 ### Publishing a new update (for maintainers)
 
-1. **Bump version** in `PalAssist.csproj` (`Version` / `InformationalVersion`, e.g. `1.3.0`).
+1. **Bump version** in `PalAssist.csproj` (`Version` / `InformationalVersion`, e.g. `1.4.0`).
 2. **Update** `PalAssist/CHANGELOG.md` (## X.Y.Z section) — shown in-app after upgrades.
 3. **Publish** self-contained single-file (bundles .NET — users need no runtime):
 
@@ -160,9 +160,8 @@ PalAssist/
 └── Features/
     ├── IFeature.cs
     ├── FeatureManager.cs          # Registry + 60Hz tick + Focus Lock suspend
-    ├── WorkAssistFeature.cs
-    ├── SprintAssistFeature.cs
-    └── ProfileWorkFeature.cs      # Beta multi-key work profiles
+    ├── WorkAssistFeature.cs       # Hold F (+ optional Smart Work Assist sequence)
+    └── SprintAssistFeature.cs     # Currently disabled in UI
 ```
 
 ---
@@ -219,7 +218,7 @@ All settings persist to `config.json`:
   "tray_enabled": true,
   "minimize_to_tray": true,
   "auto_check_updates": true,
-  "last_seen_version": "1.3.0"
+  "last_seen_version": "1.4.0"
 }
 ```
 

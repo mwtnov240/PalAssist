@@ -7,6 +7,9 @@ using System.Text.RegularExpressions;
 
 namespace PalAssist.Core
 {
+    /// <summary>One version section from CHANGELOG.md.</summary>
+    public sealed record ChangelogEntry(string Version, string Body);
+
     /// <summary>
     /// Loads and parses the embedded / shipped CHANGELOG.md.
     /// </summary>
@@ -49,13 +52,25 @@ namespace PalAssist.Core
         }
 
         /// <summary>
+        /// All changelog sections in file order (newest-first when CHANGELOG.md is authored that way).
+        /// </summary>
+        public static IReadOnlyList<ChangelogEntry> GetAllEntries()
+        {
+            return ParseEntries(LoadRaw());
+        }
+
+        /// <summary>
         /// Returns notes for a single version section (body under ## X.Y.Z), or empty.
         /// </summary>
         public static string GetNotesForVersion(string version)
         {
             version = UpdateService.NormalizeVersion(version);
-            var sections = ParseSections(LoadRaw());
-            return sections.TryGetValue(version, out var body) ? body.Trim() : "";
+            foreach (var entry in GetAllEntries())
+            {
+                if (string.Equals(entry.Version, version, StringComparison.OrdinalIgnoreCase))
+                    return entry.Body.Trim();
+            }
+            return "";
         }
 
         /// <summary>
@@ -64,8 +79,8 @@ namespace PalAssist.Core
         /// </summary>
         public static string GetNotesSince(string? afterVersion, string? currentVersion = null)
         {
-            var sections = ParseSections(LoadRaw());
-            if (sections.Count == 0)
+            var entries = GetAllEntries();
+            if (entries.Count == 0)
             {
                 if (!string.IsNullOrWhiteSpace(currentVersion))
                     return $"PalAssist v{UpdateService.NormalizeVersion(currentVersion)}";
@@ -78,23 +93,23 @@ namespace PalAssist.Core
                 after = av;
 
             var sb = new StringBuilder();
-            // Preserve file order (newest-first if author keeps that convention)
-            foreach (var kv in sections)
+            foreach (var entry in entries)
             {
-                if (!UpdateService.TryParseVersion(kv.Key, out var ver))
+                if (!UpdateService.TryParseVersion(entry.Version, out var ver))
                     continue;
                 if (after != null && ver <= after)
                     continue;
 
                 if (sb.Length > 0) sb.AppendLine().AppendLine();
-                sb.Append("## ").Append(kv.Key).AppendLine().AppendLine();
-                sb.Append(kv.Value.Trim());
+                sb.Append("## ").Append(entry.Version).AppendLine().AppendLine();
+                sb.Append(entry.Body.Trim());
             }
 
             if (sb.Length == 0 && !string.IsNullOrWhiteSpace(currentVersion))
             {
                 string cur = UpdateService.NormalizeVersion(currentVersion);
-                if (sections.TryGetValue(cur, out var body))
+                string body = GetNotesForVersion(cur);
+                if (!string.IsNullOrWhiteSpace(body))
                 {
                     sb.Append("## ").Append(cur).AppendLine().AppendLine();
                     sb.Append(body.Trim());
@@ -108,27 +123,29 @@ namespace PalAssist.Core
             return sb.Length > 0 ? sb.ToString() : "No new changelog entries.";
         }
 
-        /// <summary>Full formatted changelog for the About viewer.</summary>
+        /// <summary>Full formatted changelog for viewers.</summary>
         public static string GetFullChangelog()
         {
             string raw = LoadRaw().Trim();
             return string.IsNullOrEmpty(raw) ? "No changelog available." : raw;
         }
 
-        private static Dictionary<string, string> ParseSections(string raw)
+        private static List<ChangelogEntry> ParseEntries(string raw)
         {
-            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var result = new List<ChangelogEntry>();
             if (string.IsNullOrWhiteSpace(raw)) return result;
 
             var matches = VersionHeader.Matches(raw);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < matches.Count; i++)
             {
                 string ver = matches[i].Groups[1].Value;
+                if (!seen.Add(ver)) continue;
+
                 int start = matches[i].Index + matches[i].Length;
                 int end = i + 1 < matches.Count ? matches[i + 1].Index : raw.Length;
                 string body = raw[start..end].Trim();
-                if (!result.ContainsKey(ver))
-                    result[ver] = body;
+                result.Add(new ChangelogEntry(ver, body));
             }
             return result;
         }
