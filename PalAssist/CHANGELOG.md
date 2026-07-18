@@ -1,5 +1,10 @@
 # PalAssist Changelog
 
+## 1.3.0
+
+- **Smart Work Assist** (Beta): when enabled, Work Assist taps F once, waits 1s, then holds F so items on workstations are picked up first
+- Removed **Session Timer** from Beta
+
 ## 1.2.0
 
 - **Focus Lock** graduated from Beta — works without enabling Experimental features
