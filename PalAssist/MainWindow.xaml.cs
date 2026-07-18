@@ -53,7 +53,6 @@ namespace PalAssist
         // ── Features ──
         private WorkAssistFeature?         _workAssist;
         private SprintAssistFeature?  _sprint;
-        private ProfileWorkFeature?   _profileWork;
 
         // ── State ──
         private bool   _menuVisible = false;
@@ -75,24 +74,6 @@ namespace PalAssist
 
         // ── Rebind state ──
         private string? _rebindTarget = null;
-
-        // ── Setup wizard ──
-        private int _wizardStep = -1; // -1 = inactive, 0..N = step index
-        private static readonly string[] WizardTargets = SprintAssistAvailable
-            ? new[] { "menu", "workAssist", "sprint" }
-            : new[] { "menu", "workAssist" };
-        private static readonly string[] WizardPrompts = SprintAssistAvailable
-            ? new[]
-            {
-                "Press a key for Menu toggle…",
-                "Press a key for Work Assist…",
-                "Press a key for Sprint Assist…"
-            }
-            : new[]
-            {
-                "Press a key for Menu toggle…",
-                "Press a key for Work Assist…"
-            };
 
         // ── Menu cursor force (ShowCursor ref-count balance) ──
         private int _menuCursorForceCount;
@@ -171,9 +152,8 @@ namespace PalAssist
                 cfg.SprintEnabled = false;
             }
 
-            _profileWork = new ProfileWorkFeature();
-            ApplyProfileFromConfig(cfg);
-            _featureManager.Register(_profileWork);
+            // Work Profiles removed in v1.4 — force off leftover config
+            cfg.BetaProfileWorkEnabled = false;
 
             _featureManager.StateChanged += () => Dispatcher.Invoke(SyncUI);
             _featureManager.Start();
@@ -286,14 +266,7 @@ namespace PalAssist
                 _ = BootUpdateCheckAsync();
             }
 
-            // Fresh install: only open Beta wizard if Beta is already unlocked
-            if (cfg.BetaEnabled
-                && !cfg.BetaSetupWizardCompleted
-                && _configManager is { ConfigFileExistedOnLoad: false })
-            {
-                SwitchTab("beta");
-                StartSetupWizard();
-            }
+            BuildChangelogPanel();
         }
 
         /// <summary>
@@ -312,9 +285,9 @@ namespace PalAssist
         // ─────────────────────────────────────────────────
 
         private void TabAssists_Click(object s, RoutedEventArgs e) => SwitchTab("assists");
-        private void TabAI_Click(object s, RoutedEventArgs e)      => SwitchTab("ai");
         private void TabBeta_Click(object s, RoutedEventArgs e)    => SwitchTab("beta");
         private void TabSettings_Click(object s, RoutedEventArgs e) => SwitchTab("settings");
+        private void TabChangelog_Click(object s, RoutedEventArgs e) => SwitchTab("changelog");
 
         private void SwitchTab(string tab)
         {
@@ -326,10 +299,10 @@ namespace PalAssist
 
             _activeTab = tab;
 
-            PanelAssists.Visibility  = tab == "assists"  ? Visibility.Visible : Visibility.Collapsed;
-            PanelAI.Visibility       = tab == "ai"       ? Visibility.Visible : Visibility.Collapsed;
-            PanelBeta.Visibility     = tab == "beta"     ? Visibility.Visible : Visibility.Collapsed;
-            PanelSettings.Visibility = tab == "settings" ? Visibility.Visible : Visibility.Collapsed;
+            PanelAssists.Visibility   = tab == "assists"   ? Visibility.Visible : Visibility.Collapsed;
+            PanelBeta.Visibility      = tab == "beta"      ? Visibility.Visible : Visibility.Collapsed;
+            PanelSettings.Visibility  = tab == "settings"  ? Visibility.Visible : Visibility.Collapsed;
+            PanelChangelog.Visibility = tab == "changelog" ? Visibility.Visible : Visibility.Collapsed;
 
             // Style active tab with cyan underline
             var cyanBrush = (SolidColorBrush)FindResource("AccentCyanBrush");
@@ -337,14 +310,14 @@ namespace PalAssist
             var cyanFg = cyanBrush;
             var secFg  = (SolidColorBrush)FindResource("TextSecondaryBrush");
 
-            TabAssists.BorderBrush  = tab == "assists"  ? cyanBrush : transBrush;
-            TabAssists.Foreground   = tab == "assists"  ? cyanFg    : secFg;
-            TabAI.BorderBrush       = tab == "ai"       ? cyanBrush : transBrush;
-            TabAI.Foreground        = tab == "ai"       ? cyanFg    : secFg;
-            TabBeta.BorderBrush     = tab == "beta"     ? cyanBrush : transBrush;
-            TabBeta.Foreground      = tab == "beta"     ? cyanFg    : secFg;
-            TabSettings.BorderBrush = tab == "settings" ? cyanBrush : transBrush;
-            TabSettings.Foreground  = tab == "settings" ? cyanFg    : secFg;
+            TabAssists.BorderBrush    = tab == "assists"   ? cyanBrush : transBrush;
+            TabAssists.Foreground     = tab == "assists"   ? cyanFg    : secFg;
+            TabBeta.BorderBrush       = tab == "beta"      ? cyanBrush : transBrush;
+            TabBeta.Foreground        = tab == "beta"      ? cyanFg    : secFg;
+            TabSettings.BorderBrush   = tab == "settings"  ? cyanBrush : transBrush;
+            TabSettings.Foreground    = tab == "settings"  ? cyanFg    : secFg;
+            TabChangelog.BorderBrush  = tab == "changelog" ? cyanBrush : transBrush;
+            TabChangelog.Foreground   = tab == "changelog" ? cyanFg    : secFg;
         }
 
         // ─────────────────────────────────────────────────
@@ -498,23 +471,13 @@ namespace PalAssist
         private void StartRebind(string target)
         {
             _rebindTarget = target;
-
-            if (target.StartsWith("customKey", StringComparison.Ordinal))
+            var btn = target switch
             {
-                var btn = target switch
-                {
-                    "customKey1" => BetaCustomKey1Btn,
-                    "customKey2" => BetaCustomKey2Btn,
-                    _ => BetaCustomKey3Btn
-                };
-                btn.Content = "…";
-            }
-            else if (_wizardStep < 0)
-            {
-                var btn = target switch { "menu" => RebindMenuBtn, "workAssist" => RebindWorkAssistBtn, _ => RebindSprintBtn };
-                btn.Content = "Press a key…";
-            }
-
+                "menu" => RebindMenuBtn,
+                "workAssist" => RebindWorkAssistBtn,
+                _ => RebindSprintBtn
+            };
+            btn.Content = "Press a key…";
             BeginKeyCapture();
         }
 
@@ -541,7 +504,6 @@ namespace PalAssist
             NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
 
             RefreshHotkeyLabels();
-            RefreshCustomKeyButtons();
         }
 
         private void OnPreviewKeyDown(object sender, KeyEventArgs e)
@@ -558,10 +520,7 @@ namespace PalAssist
             // Escape → cancel
             if (key == Key.Escape)
             {
-                if (_wizardStep >= 0)
-                    CancelSetupWizard();
-                else
-                    EndRebind();
+                EndRebind();
                 return;
             }
 
@@ -571,23 +530,12 @@ namespace PalAssist
             // Unknown key → cancel
             if (vk == 0)
             {
-                if (_wizardStep >= 0)
-                    CancelSetupWizard();
-                else
-                    EndRebind();
+                EndRebind();
                 return;
             }
 
             // Save target before EndRebind clears _rebindTarget
             string savedTarget = _rebindTarget!;
-
-            // Custom profile key pick (Beta)
-            if (savedTarget.StartsWith("customKey", StringComparison.Ordinal))
-            {
-                EndRebind();
-                ApplyCustomKeyPick(savedTarget, name);
-                return;
-            }
 
             ref int id = ref _menuHotkeyId;
             if (savedTarget == "workAssist")  id = ref _workAssistHotkeyId;
@@ -596,9 +544,6 @@ namespace PalAssist
             // Restore WS_EX_NOACTIVATE BEFORE re-registering so hotkey fires correctly
             EndRebind();
             ApplyRebind(ref id, vk, name, savedTarget);
-
-            if (_wizardStep >= 0)
-                AdvanceSetupWizard();
         }
 
         private void ApplyRebind(ref int hotkeyId, uint newVk, string newName, string target)
@@ -817,19 +762,14 @@ namespace PalAssist
         /// </summary>
         private void DisableBetaFeatures()
         {
-            if (_featureManager != null && _profileWork != null && _profileWork.IsEnabled)
-                _featureManager.Toggle(_profileWork);
-
             if (_configManager != null)
             {
                 _configManager.Config.BetaProfileWorkEnabled = false;
                 _configManager.Config.BetaSmartWorkAssist = false;
             }
 
-            BetaProfileWorkToggle.IsChecked = false;
             BetaSmartWorkAssistToggle.IsChecked = false;
             ApplySmartWorkAssistToFeature(false);
-            UpdateProfileKeysLabel();
             UpdateHud();
         }
 
@@ -837,15 +777,6 @@ namespace PalAssist
         {
             BetaSmartWorkAssistToggle.IsChecked = cfg.BetaSmartWorkAssist;
             ApplySmartWorkAssistToFeature(cfg.BetaSmartWorkAssist);
-            SetBetaProfileCombo(cfg.BetaActiveProfile);
-            RefreshCustomKeyButtons();
-            UpdateProfileKeysLabel();
-
-            if (cfg.BetaProfileWorkEnabled && _profileWork != null && _featureManager != null)
-            {
-                _featureManager.Toggle(_profileWork);
-                BetaProfileWorkToggle.IsChecked = true;
-            }
         }
 
         private void ApplySmartWorkAssistToFeature(bool enabled)
@@ -882,91 +813,15 @@ namespace PalAssist
             UpdateFocusLockStatus();
         }
 
-        private void ApplyProfileFromConfig(AppConfig cfg)
-        {
-            if (_profileWork == null) return;
-            var custom = ParseCustomKeys(cfg.BetaCustomKeys);
-            _profileWork.SetProfile(cfg.BetaActiveProfile, custom);
-        }
-
-        private static List<string> ParseCustomKeys(string raw)
-        {
-            var list = new List<string>();
-            if (string.IsNullOrWhiteSpace(raw)) return list;
-            foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            {
-                if (list.Count >= 3) break;
-                if (KeyHelper.ToVk(part) != 0)
-                    list.Add(KeyHelper.ToName(KeyHelper.ToVk(part)));
-            }
-            return list;
-        }
-
         private void SaveBetaConfig()
         {
             if (_configManager == null) return;
             var cfg = _configManager.Config;
-            cfg.BetaProfileWorkEnabled = _profileWork?.IsEnabled == true;
-            cfg.BetaActiveProfile = GetSelectedProfileId();
-            cfg.BetaCustomKeys = string.Join(",", GetCustomKeysFromButtons());
+            cfg.BetaProfileWorkEnabled = false;
             cfg.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
                                      && cfg.BetaEnabled;
             ApplySmartWorkAssistToFeature(cfg.BetaSmartWorkAssist);
             _configManager.Save();
-        }
-
-        private string GetSelectedProfileId()
-        {
-            if (BetaProfileCombo.SelectedItem is ComboBoxItem item && item.Tag is string tag)
-                return tag;
-            return "Interact";
-        }
-
-        private List<string> GetCustomKeysFromButtons()
-        {
-            var keys = new List<string>();
-            foreach (var content in new[] { BetaCustomKey1Btn.Content?.ToString(), BetaCustomKey2Btn.Content?.ToString(), BetaCustomKey3Btn.Content?.ToString() })
-            {
-                if (string.IsNullOrWhiteSpace(content) || content == "—" || content == "…") continue;
-                if (KeyHelper.ToVk(content) != 0)
-                    keys.Add(content);
-            }
-            if (keys.Count == 0) keys.Add("F");
-            return keys;
-        }
-
-        private void RefreshCustomKeyButtons()
-        {
-            if (_configManager == null) return;
-            var keys = ParseCustomKeys(_configManager.Config.BetaCustomKeys);
-            while (keys.Count < 3) keys.Add("");
-            BetaCustomKey1Btn.Content = string.IsNullOrEmpty(keys[0]) ? "—" : keys[0];
-            BetaCustomKey2Btn.Content = string.IsNullOrEmpty(keys[1]) ? "—" : keys[1];
-            BetaCustomKey3Btn.Content = string.IsNullOrEmpty(keys[2]) ? "—" : keys[2];
-        }
-
-        private void SetBetaProfileCombo(string profileId)
-        {
-            foreach (ComboBoxItem item in BetaProfileCombo.Items)
-            {
-                if (item.Tag is string tag && string.Equals(tag, profileId, StringComparison.OrdinalIgnoreCase))
-                {
-                    BetaProfileCombo.SelectedItem = item;
-                    break;
-                }
-            }
-            BetaCustomKeysPanel.Visibility =
-                string.Equals(profileId, "Custom", StringComparison.OrdinalIgnoreCase)
-                    ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-
-        private void UpdateProfileKeysLabel()
-        {
-            if (_profileWork == null) return;
-            BetaProfileKeysText.Text = $"Holds: {_profileWork.KeysSummary}";
-            bool both = _profileWork.IsEnabled && _workAssist?.IsEnabled == true;
-            BetaProfileWarnText.Visibility = both ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void UpdateFocusLockStatus()
@@ -1078,134 +933,6 @@ namespace PalAssist
             }
         }
 
-        private void BetaProfileWorkToggle_Changed(object s, RoutedEventArgs e)
-        {
-            if (_profileWork == null || _featureManager == null || _configManager == null) return;
-            if (_configManager.Config.BetaEnabled != true)
-            {
-                BetaProfileWorkToggle.IsChecked = false;
-                return;
-            }
-            bool want = BetaProfileWorkToggle.IsChecked == true;
-            if (want != _profileWork.IsEnabled)
-            {
-                _featureManager.Toggle(_profileWork);
-                _soundService.PlayToggle(_profileWork.IsEnabled);
-            }
-            UpdateProfileKeysLabel();
-            SaveBetaConfig();
-            UpdateHud();
-        }
-
-        private void BetaProfileCombo_Changed(object s, SelectionChangedEventArgs e)
-        {
-            if (_configManager == null || _profileWork == null || BetaProfileCombo.SelectedItem == null) return;
-            string id = GetSelectedProfileId();
-            _configManager.Config.BetaActiveProfile = id;
-            BetaCustomKeysPanel.Visibility =
-                string.Equals(id, "Custom", StringComparison.OrdinalIgnoreCase)
-                    ? Visibility.Visible : Visibility.Collapsed;
-            var custom = GetCustomKeysFromButtons();
-            _profileWork.SetProfile(id, custom);
-            UpdateProfileKeysLabel();
-            SaveBetaConfig();
-        }
-
-        private void BetaCustomKey1Btn_Click(object s, RoutedEventArgs e) => StartRebind("customKey1");
-        private void BetaCustomKey2Btn_Click(object s, RoutedEventArgs e) => StartRebind("customKey2");
-        private void BetaCustomKey3Btn_Click(object s, RoutedEventArgs e) => StartRebind("customKey3");
-
-        private void ApplyCustomKeyPick(string target, string keyName)
-        {
-            if (_configManager == null || _profileWork == null) return;
-            var keys = GetCustomKeysFromButtons();
-            int idx = target switch { "customKey1" => 0, "customKey2" => 1, _ => 2 };
-            while (keys.Count <= idx) keys.Add("");
-            // Replace or clear slot
-            if (idx < keys.Count)
-                keys[idx] = keyName;
-            else
-                keys.Add(keyName);
-
-            // Compact empties and cap at 3 unique
-            var cleaned = new List<string>();
-            foreach (var k in keys)
-            {
-                if (string.IsNullOrWhiteSpace(k) || k == "—" || k == "…") continue;
-                if (!cleaned.Contains(k, StringComparer.OrdinalIgnoreCase) && cleaned.Count < 3)
-                    cleaned.Add(k);
-            }
-            if (cleaned.Count == 0) cleaned.Add(keyName);
-
-            _configManager.Config.BetaCustomKeys = string.Join(",", cleaned);
-            _configManager.Config.BetaActiveProfile = "Custom";
-            SetBetaProfileCombo("Custom");
-            RefreshCustomKeyButtons();
-            _profileWork.SetProfile("Custom", cleaned);
-            UpdateProfileKeysLabel();
-            SaveBetaConfig();
-        }
-
-        private void StartSetupWizard()
-        {
-            _wizardStep = 0;
-            BetaWizardIdlePanel.Visibility = Visibility.Collapsed;
-            BetaWizardActivePanel.Visibility = Visibility.Visible;
-            ShowWizardStep();
-        }
-
-        private void ShowWizardStep()
-        {
-            if (_wizardStep < 0 || _wizardStep >= WizardTargets.Length)
-            {
-                FinishSetupWizard();
-                return;
-            }
-            BetaWizardStepText.Text = $"Step {_wizardStep + 1} of {WizardTargets.Length}";
-            BetaWizardPromptText.Text = WizardPrompts[_wizardStep];
-            StartRebind(WizardTargets[_wizardStep]);
-        }
-
-        private void AdvanceSetupWizard()
-        {
-            _wizardStep++;
-            if (_wizardStep >= WizardTargets.Length)
-                FinishSetupWizard();
-            else
-                ShowWizardStep();
-        }
-
-        private void FinishSetupWizard()
-        {
-            _wizardStep = -1;
-            _rebindTarget = null;
-            BetaWizardActivePanel.Visibility = Visibility.Collapsed;
-            BetaWizardIdlePanel.Visibility = Visibility.Visible;
-            if (_configManager != null)
-            {
-                _configManager.Config.BetaSetupWizardCompleted = true;
-                _configManager.Save();
-            }
-            RefreshHotkeyLabels();
-            BetaWizardPromptText.Text = "Setup complete.";
-        }
-
-        private void CancelSetupWizard()
-        {
-            _wizardStep = -1;
-            EndRebind();
-            BetaWizardActivePanel.Visibility = Visibility.Collapsed;
-            BetaWizardIdlePanel.Visibility = Visibility.Visible;
-        }
-
-        private void BetaWizardStartBtn_Click(object s, RoutedEventArgs e) => StartSetupWizard();
-        private void BetaWizardSkipBtn_Click(object s, RoutedEventArgs e)
-        {
-            EndRebind();
-            AdvanceSetupWizard();
-        }
-        private void BetaWizardCancelBtn_Click(object s, RoutedEventArgs e) => CancelSetupWizard();
-
         private async void SaveSettingsBtn_Click(object s, RoutedEventArgs e)
         {
             if (_configManager == null) return;
@@ -1214,7 +941,7 @@ namespace PalAssist
             var cfg = _configManager.Config;
             if (_workAssist != null) cfg.WorkAssistEnabled = _workAssist.IsEnabled;
             cfg.SprintEnabled = SprintAssistAvailable && _sprint != null && _sprint.IsEnabled;
-            if (_profileWork != null) cfg.BetaProfileWorkEnabled = _profileWork.IsEnabled;
+            cfg.BetaProfileWorkEnabled = false;
 
             cfg.SprintDuration = SprintDurSlider.Value;
             cfg.RecoveryDuration = RecoveryDurSlider.Value;
@@ -1225,8 +952,6 @@ namespace PalAssist
             cfg.MenuY = Canvas.GetTop(MenuPanel);
             cfg.BetaEnabled = BetaEnabledToggle.IsChecked == true;
             cfg.FocusLockEnabled = FocusLockToggle.IsChecked == true;
-            cfg.BetaActiveProfile = GetSelectedProfileId();
-            cfg.BetaCustomKeys = string.Join(",", GetCustomKeysFromButtons());
             cfg.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
                                      && cfg.BetaEnabled;
             ApplySmartWorkAssistToFeature(cfg.BetaSmartWorkAssist);
@@ -1582,9 +1307,6 @@ namespace PalAssist
                     : (SolidColorBrush)FindResource("AccentRedBrush");
                 SprintToggle.IsChecked = on;
             }
-            if (_profileWork != null)
-                BetaProfileWorkToggle.IsChecked = _profileWork.IsEnabled;
-            UpdateProfileKeysLabel();
             SyncSprintStatus();
             UpdateHud();
         }
@@ -1630,13 +1352,6 @@ namespace PalAssist
                     _                        => ("Active",     (SolidColorBrush)FindResource("AccentGreenBrush"))
                 };
                 AddHudRow("Sprint", label, brush);
-            }
-
-            if (_profileWork != null && _profileWork.IsEnabled)
-            {
-                anyActive = true;
-                string status = _profileWork.IsInputSuspended ? "Paused" : _profileWork.KeysSummary;
-                AddHudRow("Profile", status, (SolidColorBrush)FindResource("AccentYellowBrush"));
             }
 
             HudPanel.Visibility = anyActive ? Visibility.Visible : Visibility.Collapsed;
@@ -1832,13 +1547,11 @@ namespace PalAssist
             {
                 if (_workAssist != null)  _configManager.Config.WorkAssistEnabled  = _workAssist.IsEnabled;
                 _configManager.Config.SprintEnabled = SprintAssistAvailable && _sprint != null && _sprint.IsEnabled;
-                if (_profileWork != null) _configManager.Config.BetaProfileWorkEnabled = _profileWork.IsEnabled;
+                _configManager.Config.BetaProfileWorkEnabled = false;
                 _configManager.Config.MenuX = Canvas.GetLeft(MenuPanel);
                 _configManager.Config.MenuY = Canvas.GetTop(MenuPanel);
                 _configManager.Config.BetaEnabled = BetaEnabledToggle.IsChecked == true;
                 _configManager.Config.FocusLockEnabled = FocusLockToggle.IsChecked == true;
-                _configManager.Config.BetaActiveProfile = GetSelectedProfileId();
-                _configManager.Config.BetaCustomKeys = string.Join(",", GetCustomKeysFromButtons());
                 _configManager.Config.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
                                                            && _configManager.Config.BetaEnabled;
                 SyncAppearanceConfigFromUi(_configManager.Config);
@@ -2136,11 +1849,77 @@ namespace PalAssist
 
         private void ChangelogBtn_Click(object s, RoutedEventArgs e)
         {
+            BuildChangelogPanel();
+            SwitchTab("changelog");
+        }
+
+        /// <summary>
+        /// Fills the What's Changed tab with version cards (newest first).
+        /// </summary>
+        private void BuildChangelogPanel()
+        {
+            ChangelogStack.Children.Clear();
+            var entries = ChangelogService.GetAllEntries();
             string current = UpdateService.GetCurrentVersion();
-            string notes = ChangelogService.GetNotesForVersion(current);
-            if (string.IsNullOrWhiteSpace(notes))
-                notes = ChangelogService.GetFullChangelog();
-            ShowWhatsNewDialog($"PalAssist v{current}", notes);
+            var cyan = (SolidColorBrush)FindResource("AccentCyanBrush");
+            var primary = (SolidColorBrush)FindResource("TextPrimaryBrush");
+            var secondary = (SolidColorBrush)FindResource("TextSecondaryBrush");
+
+            if (entries.Count == 0)
+            {
+                ChangelogStack.Children.Add(new TextBlock
+                {
+                    Text = "No changelog entries found.",
+                    FontFamily = new FontFamily("Segoe UI"),
+                    FontSize = 12,
+                    Foreground = secondary,
+                    Margin = new Thickness(14, 8, 14, 8),
+                    TextWrapping = TextWrapping.Wrap
+                });
+                return;
+            }
+
+            foreach (var entry in entries)
+            {
+                bool isCurrent = string.Equals(entry.Version, current, StringComparison.OrdinalIgnoreCase);
+                var border = new Border
+                {
+                    Margin = new Thickness(14, 2, 14, 6),
+                    Padding = new Thickness(14, 10, 14, 10),
+                    CornerRadius = new CornerRadius(10),
+                    Background = new SolidColorBrush(Color.FromArgb(0x99, 0x1A, 0x1A, 0x2E)),
+                    BorderBrush = isCurrent ? cyan : Brushes.Transparent,
+                    BorderThickness = isCurrent ? new Thickness(1.5) : new Thickness(0)
+                };
+
+                var stack = new StackPanel();
+                string title = isCurrent ? $"v{entry.Version}  ·  current" : $"v{entry.Version}";
+                stack.Children.Add(new TextBlock
+                {
+                    Text = title,
+                    FontFamily = new FontFamily("Segoe UI"),
+                    FontSize = 14,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = isCurrent ? cyan : primary,
+                    Margin = new Thickness(0, 0, 0, 6)
+                });
+
+                string body = string.IsNullOrWhiteSpace(entry.Body)
+                    ? "(No notes for this version.)"
+                    : entry.Body.Trim();
+                stack.Children.Add(new TextBlock
+                {
+                    Text = body,
+                    FontFamily = new FontFamily("Segoe UI"),
+                    FontSize = 12,
+                    Foreground = secondary,
+                    TextWrapping = TextWrapping.Wrap,
+                    LineHeight = 18
+                });
+
+                border.Child = stack;
+                ChangelogStack.Children.Add(border);
+            }
         }
 
         private void ShowWhatsNewDialog(string title, string body)

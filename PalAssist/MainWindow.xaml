@@ -41,7 +41,7 @@
         <!-- ═══════════════════════════════════════════
              MAIN MENU CARD (tabbed)
              ═══════════════════════════════════════════ -->
-        <Border x:Name="MenuPanel" Width="460"
+        <Border x:Name="MenuPanel" Width="500"
                 CornerRadius="16" Padding="0"
                 Visibility="Collapsed"
                 MouseLeftButtonDown="MenuPanel_MouseLeftButtonDown"
@@ -142,9 +142,6 @@
                         <Button x:Name="TabAssists" Content="Assists"
                                 Style="{StaticResource TabBtnStyle}"
                                 Click="TabAssists_Click"/>
-                        <Button x:Name="TabAI" Content="AI Assists"
-                                Style="{StaticResource TabBtnStyle}"
-                                Click="TabAI_Click"/>
                         <Button x:Name="TabBeta" Content="Beta"
                                 Style="{StaticResource TabBtnStyle}"
                                 Visibility="Collapsed"
@@ -152,6 +149,9 @@
                         <Button x:Name="TabSettings" Content="Settings"
                                 Style="{StaticResource TabBtnStyle}"
                                 Click="TabSettings_Click"/>
+                        <Button x:Name="TabChangelog" Content="What's Changed"
+                                Style="{StaticResource TabBtnStyle}"
+                                Click="TabChangelog_Click"/>
                     </StackPanel>
                 </Border>
 
@@ -439,28 +439,6 @@
                 </StackPanel>
 
                 <!-- ════════════════════════════════════════
-                     TAB CONTENT: AI Assists (placeholder)
-                     ════════════════════════════════════════ -->
-                <StackPanel x:Name="PanelAI" Visibility="Collapsed">
-                    <Border Margin="14,20" Padding="30" CornerRadius="10" HorizontalAlignment="Center">
-                        <Border.Background>
-                            <SolidColorBrush Color="#1A1A2E" Opacity="0.5"/>
-                        </Border.Background>
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock Text="🤖" FontSize="28" HorizontalAlignment="Center" Margin="0,0,0,8"/>
-                            <TextBlock Text="AI Assists"
-                                       FontFamily="Segoe UI" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"
-                                       HorizontalAlignment="Center"/>
-                            <TextBlock Text="Coming in a future update"
-                                       FontFamily="Segoe UI" FontSize="12"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-
-                <!-- ════════════════════════════════════════
                      TAB CONTENT: Beta (experimental)
                      ════════════════════════════════════════ -->
                 <StackPanel x:Name="PanelBeta" Visibility="Collapsed">
@@ -475,70 +453,8 @@
                                    Foreground="#FFB74D" TextWrapping="Wrap"/>
                     </Border>
 
-                    <!-- Work Profiles -->
-                    <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
-                        <Border.Background>
-                            <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
-                        </Border.Background>
-                        <StackPanel>
-                            <Grid Margin="0,0,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="Work Profiles" FontFamily="Segoe UI" FontSize="13"
-                                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="Multi-key hold (separate from Assists → Work Assist)"
-                                               FontFamily="Segoe UI" FontSize="11"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                </StackPanel>
-                                <ToggleButton x:Name="BetaProfileWorkToggle" Grid.Column="1"
-                                              Style="{StaticResource ToggleSwitchStyle}"
-                                              Checked="BetaProfileWorkToggle_Changed"
-                                              Unchecked="BetaProfileWorkToggle_Changed"/>
-                            </Grid>
-                            <Grid Margin="0,0,0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Profile" FontFamily="Segoe UI" FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <ComboBox x:Name="BetaProfileCombo" Grid.Column="1"
-                                          Style="{StaticResource DarkCombo}" Width="150"
-                                          SelectionChanged="BetaProfileCombo_Changed">
-                                    <ComboBoxItem Content="Interact" Tag="Interact" IsSelected="True"/>
-                                    <ComboBoxItem Content="Forward + Interact" Tag="ForwardInteract"/>
-                                    <ComboBoxItem Content="Custom" Tag="Custom"/>
-                                </ComboBox>
-                            </Grid>
-                            <TextBlock x:Name="BetaProfileKeysText" Text="Holds: F"
-                                       FontFamily="Segoe UI" FontSize="11"
-                                       Foreground="{DynamicResource AccentCyanBrush}" Margin="0,0,0,6"/>
-                            <StackPanel x:Name="BetaCustomKeysPanel" Visibility="Collapsed">
-                                <TextBlock Text="Custom keys (click to set, max 3)"
-                                           FontFamily="Segoe UI" FontSize="11"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <Button x:Name="BetaCustomKey1Btn" Content="F" Style="{StaticResource RebindBtnStyle}"
-                                            Margin="0,0,6,0" Click="BetaCustomKey1Btn_Click"/>
-                                    <Button x:Name="BetaCustomKey2Btn" Content="—" Style="{StaticResource RebindBtnStyle}"
-                                            Margin="0,0,6,0" Click="BetaCustomKey2Btn_Click"/>
-                                    <Button x:Name="BetaCustomKey3Btn" Content="—" Style="{StaticResource RebindBtnStyle}"
-                                            Click="BetaCustomKey3Btn_Click"/>
-                                </StackPanel>
-                            </StackPanel>
-                            <TextBlock x:Name="BetaProfileWarnText" Visibility="Collapsed"
-                                       Text="⚠ Assists Work Assist is also on — both may hold F"
-                                       FontFamily="Segoe UI" FontSize="10"
-                                       Foreground="#FFB74D" Margin="0,6,0,0" TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </Border>
-
                     <!-- Smart Work Assist -->
-                    <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
+                    <Border Margin="14,2,14,10" Padding="14,10" CornerRadius="10">
                         <Border.Background>
                             <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
                         </Border.Background>
@@ -565,40 +481,6 @@
                             <TextBlock Text="Does not change how you turn Work Assist on/off — only the start sequence when this is enabled."
                                        FontFamily="Segoe UI" FontSize="10"
                                        Foreground="#FFB74D" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Setup Wizard -->
-                    <Border Margin="14,2,14,10" Padding="14,10" CornerRadius="10">
-                        <Border.Background>
-                            <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
-                        </Border.Background>
-                        <StackPanel>
-                            <TextBlock Text="Setup Wizard" FontFamily="Segoe UI" FontSize="13"
-                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
-                                       Margin="0,0,0,4"/>
-                            <TextBlock Text="Rebind menu and work hotkeys step by step"
-                                       FontFamily="Segoe UI" FontSize="11"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,8"/>
-                            <StackPanel x:Name="BetaWizardIdlePanel">
-                                <Button Content="Run Setup Wizard" Style="{StaticResource RebindBtnStyle}"
-                                        HorizontalAlignment="Left" Click="BetaWizardStartBtn_Click"/>
-                            </StackPanel>
-                            <StackPanel x:Name="BetaWizardActivePanel" Visibility="Collapsed">
-                                <TextBlock x:Name="BetaWizardStepText" Text="Step 1 of 3"
-                                           FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource AccentCyanBrush}" Margin="0,0,0,4"/>
-                                <TextBlock x:Name="BetaWizardPromptText" Text="Press a key for Menu toggle…"
-                                           FontFamily="Segoe UI" FontSize="12"
-                                           Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,8"
-                                           TextWrapping="Wrap"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <Button Content="Skip" Style="{StaticResource RebindBtnStyle}"
-                                            Margin="0,0,8,0" Click="BetaWizardSkipBtn_Click"/>
-                                    <Button Content="Cancel" Style="{StaticResource RebindBtnStyle}"
-                                            Click="BetaWizardCancelBtn_Click"/>
-                                </StackPanel>
-                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -876,7 +758,7 @@
                                 <StackPanel Grid.Column="0">
                                     <TextBlock Text="Enable Beta" FontFamily="Segoe UI" FontSize="12"
                                                Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                    <TextBlock Text="Unlocks the Beta tab (experimental / unstable)"
+                                    <TextBlock Text="Unlocks Smart Work Assist on the Beta tab"
                                                FontFamily="Segoe UI" FontSize="10"
                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                Margin="0,2,0,0"/>
@@ -939,13 +821,38 @@
                                         Style="{StaticResource RebindBtnStyle}"
                                         Click="InstallUpdateBtn_Click"
                                         Visibility="Collapsed" IsEnabled="false" Margin="0,0,8,0"/>
-                                <Button x:Name="ChangelogBtn" Content="What's New"
+                                <Button x:Name="ChangelogBtn" Content="What's Changed"
                                         Style="{StaticResource RebindBtnStyle}"
                                         Click="ChangelogBtn_Click"/>
                             </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
+                </ScrollViewer>
+
+                <!-- ════════════════════════════════════════
+                     TAB CONTENT: What's Changed
+                     ════════════════════════════════════════ -->
+                <ScrollViewer x:Name="PanelChangelog" Visibility="Collapsed"
+                              VerticalScrollBarVisibility="Auto" MaxHeight="520"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <Border Margin="14,10,14,6" Padding="12,8" CornerRadius="8">
+                            <Border.Background>
+                                <SolidColorBrush Color="#1A1A2E" Opacity="0.5"/>
+                            </Border.Background>
+                            <StackPanel>
+                                <TextBlock Text="What's Changed"
+                                           FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="All PalAssist versions — newest first. Scroll for older releases."
+                                           FontFamily="Segoe UI" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,2,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                        <StackPanel x:Name="ChangelogStack" Margin="0,0,0,10"/>
+                    </StackPanel>
                 </ScrollViewer>
 
                 <!-- ── Footer ── -->
