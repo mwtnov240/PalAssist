@@ -141,6 +141,7 @@ namespace PalAssist
             _featureManager = new FeatureManager();
 
             _workAssist = new WorkAssistFeature();
+            _workAssist.SmartWaitAfterTapMs = Math.Clamp(cfg.BetaSmartWorkWaitMs, 0, 1000);
             _featureManager.Register(_workAssist);
 
             if (SprintAssistAvailable)
@@ -587,7 +588,12 @@ namespace PalAssist
         private void RebindWorkAssistBtn_Click(object s, RoutedEventArgs e)  => StartRebind("workAssist");
         private void RebindSprintBtn_Click(object s, RoutedEventArgs e) => StartRebind("sprint");
 
-        private bool _rebindClearedNoActivate;
+        /// <summary>
+        /// WS_EX_NOACTIVATE is cleared while rebinding hotkeys OR editing a TextBox.
+        /// Without this, Windows never delivers typed characters to the overlay.
+        /// </summary>
+        private int _keyboardCaptureCount;
+        private bool _textBoxKeyboardCapture;
 
         private void StartRebind(string target)
         {
@@ -605,29 +611,68 @@ namespace PalAssist
         private void BeginKeyCapture()
         {
             // Temporarily allow the overlay to be activated/focused so PreviewKeyDown fires.
-            // Without this, WS_EX_NOACTIVATE silently blocks all keyboard input.
+            AcquireKeyboardCapture();
             try
             {
-                int exStyle = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
-                exStyle &= ~NativeMethods.WS_EX_NOACTIVATE;
-                NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
-                _rebindClearedNoActivate = true;
                 this.Activate();
                 this.Focus();
             }
             catch (Exception ex)
             {
                 AppLog.Error("MainWindow.BeginKeyCapture", ex.Message, ex);
-                RestoreNoActivateStyle();
+                ReleaseKeyboardCapture();
             }
         }
 
-        /// <summary>Always restore WS_EX_NOACTIVATE after rebind (try/finally safety).</summary>
-        private void RestoreNoActivateStyle()
+        /// <summary>
+        /// Clear WS_EX_NOACTIVATE so WPF can receive keyboard (rebind + TextBox typing).
+        /// </summary>
+        private void AcquireKeyboardCapture()
         {
             try
             {
-                if (!_rebindClearedNoActivate && _hwnd == IntPtr.Zero) return;
+                if (_keyboardCaptureCount == 0 && _hwnd != IntPtr.Zero)
+                {
+                    int exStyle = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
+                    exStyle &= ~NativeMethods.WS_EX_NOACTIVATE;
+                    NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
+                }
+                _keyboardCaptureCount++;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("MainWindow.AcquireKeyboardCapture", ex.Message, ex);
+            }
+        }
+
+        /// <summary>Restore WS_EX_NOACTIVATE when nothing needs keyboard capture.</summary>
+        private void ReleaseKeyboardCapture()
+        {
+            try
+            {
+                if (_keyboardCaptureCount > 0)
+                    _keyboardCaptureCount--;
+                if (_keyboardCaptureCount == 0 && _hwnd != IntPtr.Zero)
+                {
+                    int exStyle = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
+                    exStyle |= NativeMethods.WS_EX_NOACTIVATE;
+                    NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("MainWindow.ReleaseKeyboardCapture", ex.Message, ex);
+            }
+        }
+
+        /// <summary>Force restore NOACTIVATE (e.g. after rebind error). Safe if already restored.</summary>
+        private void RestoreNoActivateStyle()
+        {
+            _keyboardCaptureCount = 0;
+            _textBoxKeyboardCapture = false;
+            try
+            {
+                if (_hwnd == IntPtr.Zero) return;
                 int exStyle = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
                 exStyle |= NativeMethods.WS_EX_NOACTIVATE;
                 NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
@@ -636,17 +681,16 @@ namespace PalAssist
             {
                 AppLog.Error("MainWindow.RestoreNoActivate", ex.Message, ex);
             }
-            finally
-            {
-                _rebindClearedNoActivate = false;
-            }
         }
 
         /// <summary>Restores WS_EX_NOACTIVATE after a rebind completes or is cancelled.</summary>
         private void EndRebind()
         {
             _rebindTarget = null;
-            RestoreNoActivateStyle();
+            ReleaseKeyboardCapture();
+            // If a TextBox still needs keyboard, keep capture
+            if (_textBoxKeyboardCapture)
+                AcquireKeyboardCapture();
             try { RefreshHotkeyLabels(); }
             catch (Exception ex) { AppLog.Error("MainWindow.EndRebind", ex.Message, ex); }
         }
@@ -1018,13 +1062,18 @@ namespace PalAssist
         private void RestoreBetaUiFromConfig(AppConfig cfg)
         {
             BetaSmartWorkAssistToggle.IsChecked = cfg.BetaSmartWorkAssist;
+            int ms = Math.Clamp(cfg.BetaSmartWorkWaitMs, 0, 1000);
+            cfg.BetaSmartWorkWaitMs = ms;
+            SmartWorkWaitMsBox.Text = ms.ToString();
+            UpdateSmartWorkWaitHint(ms);
             ApplySmartWorkAssistToFeature(cfg.BetaSmartWorkAssist);
         }
 
         private void ApplySmartWorkAssistToFeature(bool enabled)
         {
-            if (_workAssist != null)
-                _workAssist.SmartPickupEnabled = enabled;
+            if (_workAssist == null) return;
+            _workAssist.SmartPickupEnabled = enabled;
+            _workAssist.SmartWaitAfterTapMs = GetSmartWorkWaitMsFromUi();
         }
 
         private void BetaSmartWorkAssistToggle_Changed(object s, RoutedEventArgs e)
@@ -1037,6 +1086,80 @@ namespace PalAssist
             if (BetaSmartWorkAssistToggle.IsChecked == true && !want)
                 BetaSmartWorkAssistToggle.IsChecked = false;
             _configManager.Save();
+        }
+
+        private void SmartWorkWaitMsBox_GotFocus(object s, RoutedEventArgs e)
+        {
+            // Overlay is WS_EX_NOACTIVATE — must allow activation or typing never arrives
+            if (!_textBoxKeyboardCapture)
+            {
+                _textBoxKeyboardCapture = true;
+                AcquireKeyboardCapture();
+            }
+            try
+            {
+                Activate();
+                SmartWorkWaitMsBox.Focus();
+                SmartWorkWaitMsBox.SelectAll();
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("MainWindow.SmartWorkWaitMs.GotFocus", ex.Message, ex);
+            }
+        }
+
+        private void SmartWorkWaitMsBox_LostFocus(object s, RoutedEventArgs e)
+        {
+            CommitSmartWorkWaitMs();
+            if (_textBoxKeyboardCapture)
+            {
+                _textBoxKeyboardCapture = false;
+                if (_rebindTarget == null)
+                    ReleaseKeyboardCapture();
+            }
+        }
+
+        private void SmartWorkWaitMsBox_KeyDown(object s, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                CommitSmartWorkWaitMs();
+                // Move focus away so NOACTIVATE is restored
+                Keyboard.ClearFocus();
+                e.Handled = true;
+            }
+        }
+
+        private int GetSmartWorkWaitMsFromUi()
+        {
+            if (int.TryParse(SmartWorkWaitMsBox.Text?.Trim(), out int ms))
+                return Math.Clamp(ms, 0, 1000);
+            return 500;
+        }
+
+        private void CommitSmartWorkWaitMs()
+        {
+            if (_configManager == null) return;
+            int ms = GetSmartWorkWaitMsFromUi();
+            SmartWorkWaitMsBox.Text = ms.ToString();
+            _configManager.Config.BetaSmartWorkWaitMs = ms;
+            if (_workAssist != null)
+                _workAssist.SmartWaitAfterTapMs = ms;
+            UpdateSmartWorkWaitHint(ms);
+            _configManager.Save();
+        }
+
+        private void UpdateSmartWorkWaitHint(int ms)
+        {
+            if (SmartWorkWaitHintText == null) return;
+            if (ms <= 0)
+                SmartWorkWaitHintText.Text = "0 ms — hold starts right after the pickup tap";
+            else if (ms >= 1000)
+                SmartWorkWaitHintText.Text = "1000 ms = 1 second after pickup tap";
+            else if (ms == 500)
+                SmartWorkWaitHintText.Text = "500 ms after pickup tap (default)";
+            else
+                SmartWorkWaitHintText.Text = $"{ms} ms after pickup tap ({ms / 1000.0:0.###} s)";
         }
 
         private void RestoreFocusLockFromConfig(AppConfig cfg)
@@ -1062,6 +1185,7 @@ namespace PalAssist
             cfg.BetaProfileWorkEnabled = false;
             cfg.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
                                      && cfg.BetaEnabled;
+            cfg.BetaSmartWorkWaitMs = GetSmartWorkWaitMsFromUi();
             ApplySmartWorkAssistToFeature(cfg.BetaSmartWorkAssist);
             _configManager.Save();
         }
@@ -1203,6 +1327,7 @@ namespace PalAssist
             cfg.FocusLockEnabled = FocusLockToggle.IsChecked == true;
             cfg.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
                                      && cfg.BetaEnabled;
+            cfg.BetaSmartWorkWaitMs = GetSmartWorkWaitMsFromUi();
             ApplySmartWorkAssistToFeature(cfg.BetaSmartWorkAssist);
             cfg.AfkSafetyEnabled = AfkSafetyToggle.IsChecked == true;
 
@@ -1866,6 +1991,7 @@ namespace PalAssist
                     _configManager.Config.FocusLockEnabled = FocusLockToggle.IsChecked == true;
                     _configManager.Config.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
                                                                && _configManager.Config.BetaEnabled;
+                    _configManager.Config.BetaSmartWorkWaitMs = GetSmartWorkWaitMsFromUi();
                     _configManager.Config.AfkSafetyEnabled = AfkSafetyToggle.IsChecked == true;
                     SyncAppearanceConfigFromUi(_configManager.Config);
                     SyncSoundConfigFromUi(_configManager.Config);
@@ -2002,6 +2128,7 @@ namespace PalAssist
             cfg.FocusLockEnabled = FocusLockToggle.IsChecked == true;
             cfg.BetaEnabled = BetaEnabledToggle.IsChecked == true;
             cfg.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true && cfg.BetaEnabled;
+            cfg.BetaSmartWorkWaitMs = GetSmartWorkWaitMsFromUi();
             cfg.AfkSafetyEnabled = AfkSafetyToggle.IsChecked == true;
             cfg.MenuX = Canvas.GetLeft(MenuPanel);
             cfg.MenuY = Canvas.GetTop(MenuPanel);

@@ -1,5 +1,11 @@
 # PalAssist Changelog
 
+## 2.1.0
+
+- **Smart Work Assist:** adjustable wait after pickup tap — type **0–1000 ms** (default **500 ms**)
+- Wait is saved in config and applied when Work Assist starts with Smart Work on
+- TextBox typing works on the overlay (keyboard capture while editing)
+
 ## 2.0.1
 
 - **Update robustness:** verify downloaded EXE (PE header, size, optional GitHub SHA-256 digest)

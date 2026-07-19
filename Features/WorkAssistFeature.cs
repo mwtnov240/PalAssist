@@ -11,7 +11,7 @@ namespace PalAssist.Features
     /// progress resets if F is "pressed" again each frame, so nothing ever finishes.
     /// We press once and only re-assert if the OS reports F is no longer down.
     ///
-    /// Smart Work Assist (beta): on enable, tap F once, wait 1s, then hold —
+    /// Smart Work Assist (beta): on enable, tap F once, wait N ms, then hold —
     /// so items sitting on a workstation are picked up before work starts.
     /// </summary>
     public class WorkAssistFeature : IFeature
@@ -22,10 +22,22 @@ namespace PalAssist.Features
         public bool   IsInputSuspended { get; private set; }
 
         /// <summary>
-        /// When true, OnEnable runs tap → wait 1s → hold instead of immediate hold.
+        /// When true, OnEnable runs tap → wait → hold instead of immediate hold.
         /// Set from Beta → Smart Work Assist; does not change Work Assist on/off UX.
         /// </summary>
         public bool SmartPickupEnabled { get; set; }
+
+        /// <summary>
+        /// Wait after the pickup tap before continuous hold starts (0–1000 ms).
+        /// 0 = hold immediately after the short tap; 1000 = 1 second.
+        /// </summary>
+        public int SmartWaitAfterTapMs
+        {
+            get => _smartWaitAfterTapMs;
+            set => _smartWaitAfterTapMs = Math.Clamp(value, 0, 1000);
+        }
+
+        private int _smartWaitAfterTapMs = 500;
 
         private enum WorkPhase
         {
@@ -37,7 +49,6 @@ namespace PalAssist.Features
         private WorkPhase _phase = WorkPhase.Holding;
         private readonly Stopwatch _phaseTimer = new();
         private const double SmartTapDurationSec = 0.05;
-        private const double SmartWaitAfterTapSec = 1.0;
 
         // Safety re-hold if something released F (focus loss, etc.) — not every frame
         private readonly Stopwatch _reassertTimer = new();
@@ -96,7 +107,7 @@ namespace PalAssist.Features
                     return;
 
                 case WorkPhase.SmartWait:
-                    if (_phaseTimer.Elapsed.TotalSeconds >= SmartWaitAfterTapSec)
+                    if (_phaseTimer.Elapsed.TotalMilliseconds >= SmartWaitAfterTapMs)
                         BeginHolding();
                     return;
 
