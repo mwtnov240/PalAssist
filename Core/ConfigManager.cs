@@ -291,6 +291,13 @@ namespace PalAssist.Core
         [JsonPropertyName("last_seen_version")]
         public string LastSeenVersion { get; set; } = "";
 
+        /// <summary>
+        /// Last version that fully finished startup. Used to force key release
+        /// after an update (or any version change).
+        /// </summary>
+        [JsonPropertyName("last_launched_version")]
+        public string LastLaunchedVersion { get; set; } = "";
+
         // ── Appearance ──
         [JsonPropertyName("ui_opacity")]
         public double UiOpacity { get; set; } = 0.94;

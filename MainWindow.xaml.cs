@@ -312,16 +312,54 @@ namespace PalAssist
             InstallUpdateBtn.Visibility = Visibility.Collapsed;
             InstallUpdateBtn.IsEnabled = false;
 
+            // After self-update (or any version bump): force-release keys once
+            MaybeForceReleaseAfterUpdate(cfg);
+
             // What's New after upgrade (before update check so user sees local notes)
             MaybeShowWhatsNew(cfg);
 
-            // Always auto-check on boot; prompt before download/install
+            // Auto-check on boot with retries; never crash the app if check fails
             if (cfg.AutoCheckUpdates)
             {
                 _ = BootUpdateCheckAsync();
             }
 
             BuildChangelogPanel();
+        }
+
+        /// <summary>
+        /// After an update apply (marker file) or when the running version changed,
+        /// release any stuck keys left over from the previous process.
+        /// </summary>
+        private void MaybeForceReleaseAfterUpdate(AppConfig cfg)
+        {
+            try
+            {
+                string current = UpdateService.GetCurrentVersion();
+                bool marker = UpdateService.ConsumePostUpdateMarker();
+                string last = cfg.LastLaunchedVersion?.Trim() ?? "";
+                bool versionChanged = !string.IsNullOrEmpty(last)
+                    && !string.Equals(last, current, StringComparison.OrdinalIgnoreCase);
+
+                if (marker || versionChanged)
+                {
+                    AppLog.Info("MainWindow",
+                        marker
+                            ? "Post-update first launch — force key release"
+                            : $"Version changed ({last} → {current}) — force key release");
+                    try { _featureManager?.ReleaseAllInput(); }
+                    catch { FeatureManager.ForceReleaseCommonKeys(); }
+                    FeatureManager.ForceReleaseCommonKeys();
+                }
+
+                cfg.LastLaunchedVersion = current;
+                _configManager?.Save();
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("MainWindow.PostUpdateRelease", ex.Message, ex);
+                try { FeatureManager.ForceReleaseCommonKeys(); } catch { /* ignore */ }
+            }
         }
 
         /// <summary>
@@ -1244,19 +1282,57 @@ namespace PalAssist
         }
 
         /// <summary>
-        /// On boot: check for updates (no silent download). If available, ask the user.
+        /// On boot: resilient update check (retries). Never throws; prompts only if available.
         /// </summary>
         private async Task BootUpdateCheckAsync()
         {
-            await RunUpdateCheckAsync(downloadIfAvailable: false, userInitiated: false);
-            if (_updateService?.PendingUpdate is not { Success: true, UpdateAvailable: true } pending)
-                return;
+            try
+            {
+                if (_updateService == null) return;
+                if (_updateInProgress) return;
 
-            bool yes = PromptInstallUpdate(pending.LatestVersion);
-            if (yes)
-                await DownloadAndInstallNowAsync();
-            else
-                SetUpdateStatus($"v{pending.LatestVersion} available — use Check for Updates when ready.");
+                _updateInProgress = true;
+                _updateCts?.Cancel();
+                _updateCts = new CancellationTokenSource();
+                var ct = _updateCts.Token;
+
+                try
+                {
+                    SetUpdateStatus("Checking for updates…");
+                    var result = await _updateService.CheckForUpdateWithRetryAsync(maxAttempts: 2, ct)
+                        .ConfigureAwait(true);
+                    ApplyUpdateUi(result);
+
+                    if (result is not { Success: true, UpdateAvailable: true })
+                        return;
+
+                    bool yes = PromptInstallUpdate(result.LatestVersion);
+                    if (yes)
+                        await DownloadAndInstallNowAsync();
+                    else
+                        SetUpdateStatus($"v{result.LatestVersion} available — use Check for Updates when ready.");
+                }
+                catch (OperationCanceledException)
+                {
+                    SetUpdateStatus("");
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Error("MainWindow.BootUpdate", ex.Message, ex);
+                    SetUpdateStatus("Update check failed (will try next launch).");
+                }
+                finally
+                {
+                    _updateInProgress = false;
+                    UpdateBtn.IsEnabled = true;
+                    if (UpdateBtn.Content?.ToString() == "Checking…")
+                        UpdateBtn.Content = "Check for Updates";
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("MainWindow.BootUpdate.Outer", ex.Message, ex);
+            }
         }
 
         private bool PromptInstallUpdate(string version)
@@ -1303,10 +1379,10 @@ namespace PalAssist
                     });
                 });
 
-                // Ensure we have release metadata
+                // Ensure we have release metadata (with retry)
                 if (_updateService.PendingUpdate is not { UpdateAvailable: true })
                 {
-                    var check = await _updateService.CheckForUpdateAsync(ct).ConfigureAwait(true);
+                    var check = await _updateService.CheckForUpdateWithRetryAsync(2, ct).ConfigureAwait(true);
                     if (!check.Success || !check.UpdateAvailable)
                     {
                         ApplyUpdateUi(check);
@@ -1319,6 +1395,8 @@ namespace PalAssist
 
                 if (result.Success && (result.Staged || _updateService.IsStaged))
                     ApplyStagedUpdateAndRestart();
+                else if (!result.Success)
+                    SetUpdateStatus(result.Message);
             }
             catch (OperationCanceledException)
             {
@@ -1328,6 +1406,7 @@ namespace PalAssist
             }
             catch (Exception ex)
             {
+                AppLog.Error("MainWindow.DownloadAndInstall", ex.Message, ex);
                 SetUpdateStatus($"Download failed: {ex.Message}");
                 UpdateBtn.Content = "Check for Updates";
                 UpdateBtn.IsEnabled = true;
@@ -1348,12 +1427,16 @@ namespace PalAssist
 
             try
             {
-                _featureManager?.DisableAll();
+                // Always clear keys before process replacement
+                try { _featureManager?.ReleaseAllInput(); }
+                catch { FeatureManager.ForceReleaseCommonKeys(); }
 
                 if (_configManager != null)
                 {
                     if (_workAssist != null)  _configManager.Config.WorkAssistEnabled  = false;
                     if (_sprint != null) _configManager.Config.SprintEnabled = false;
+                    WorkAssistToggle.IsChecked = false;
+                    SprintToggle.IsChecked = false;
                     _configManager.Config.MenuX = Canvas.GetLeft(MenuPanel);
                     _configManager.Config.MenuY = Canvas.GetTop(MenuPanel);
                     _configManager.Save();
@@ -1365,9 +1448,10 @@ namespace PalAssist
 
                 if (!_updateService.ApplyAndRestart())
                 {
-                    SetUpdateStatus("Could not start the updater. Try running as admin or reinstall.");
+                    SetUpdateStatus("Install blocked — download failed verification or updater could not start.");
                     UpdateBtn.IsEnabled = true;
                     InstallUpdateBtn.IsEnabled = true;
+                    UpdateBtn.Content = "Check for Updates";
                     return;
                 }
 
@@ -1375,6 +1459,7 @@ namespace PalAssist
             }
             catch (Exception ex)
             {
+                AppLog.Error("MainWindow.ApplyUpdate", ex.Message, ex);
                 SetUpdateStatus($"Install failed: {ex.Message}");
                 UpdateBtn.IsEnabled = true;
                 InstallUpdateBtn.IsEnabled = true;
@@ -1415,7 +1500,7 @@ namespace PalAssist
                         });
                     });
 
-                    result = await _updateService.CheckForUpdateAsync(ct).ConfigureAwait(true);
+                    result = await _updateService.CheckForUpdateWithRetryAsync(2, ct).ConfigureAwait(true);
                     if (result.Success && result.UpdateAvailable)
                     {
                         UpdateBtn.Content = "Downloading…";
@@ -1425,7 +1510,8 @@ namespace PalAssist
                 }
                 else
                 {
-                    result = await _updateService.CheckForUpdateAsync(ct).ConfigureAwait(true);
+                    result = await _updateService.CheckForUpdateWithRetryAsync(
+                        userInitiated ? 2 : 1, ct).ConfigureAwait(true);
                 }
 
                 ApplyUpdateUi(result);

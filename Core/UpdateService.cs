@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -120,11 +121,54 @@ namespace PalAssist.Core
                 DownloadUrl = asset.BrowserDownloadUrl,
                 AssetName = asset.Name ?? "PalAssist.exe",
                 AssetSizeBytes = asset.Size,
+                ExpectedSha256 = NormalizeDigest(asset.Digest),
                 Message = $"Update available: v{remoteVer}"
             };
 
             _pending = result;
             return result;
+        }
+
+        /// <summary>
+        /// Check for updates with one retry on transient network/API failures.
+        /// </summary>
+        public async Task<UpdateCheckResult> CheckForUpdateWithRetryAsync(
+            int maxAttempts = 2,
+            CancellationToken ct = default)
+        {
+            maxAttempts = Math.Clamp(maxAttempts, 1, 4);
+            UpdateCheckResult? last = null;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    last = await CheckForUpdateAsync(ct).ConfigureAwait(false);
+                    if (last.Success)
+                        return last;
+
+                    // Retry only on likely-transient failures
+                    bool transient = last.Message.Contains("rate limit", StringComparison.OrdinalIgnoreCase)
+                        || last.Message.Contains("returned 5", StringComparison.OrdinalIgnoreCase)
+                        || last.Message.Contains("timed out", StringComparison.OrdinalIgnoreCase)
+                        || last.Message.Contains("network", StringComparison.OrdinalIgnoreCase);
+                    if (!transient || attempt == maxAttempts)
+                        return last;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) when (attempt < maxAttempts)
+                {
+                    AppLog.Warn("UpdateService.CheckRetry", $"Attempt {attempt} failed: {ex.Message}");
+                    last = UpdateCheckResult.Fail(GetCurrentVersion(), ex.Message);
+                }
+
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1.5 * attempt), ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { throw; }
+            }
+
+            return last ?? UpdateCheckResult.Fail(GetCurrentVersion(), "Update check failed.");
         }
 
         /// <summary>
@@ -153,6 +197,32 @@ namespace PalAssist.Core
 
                 await DownloadFileAsync(_pending.DownloadUrl!, downloadPath, progress, token).ConfigureAwait(false);
 
+                // Verify the raw download (size / optional GitHub digest for the asset itself)
+                if (!isZip)
+                {
+                    var rawCheck = VerifyDownloadedFile(
+                        downloadPath,
+                        expectedSize: _pending.AssetSizeBytes,
+                        expectedSha256: _pending.ExpectedSha256,
+                        requirePe: true);
+                    if (!rawCheck.Ok)
+                    {
+                        _stagedExePath = null;
+                        TryDeleteDirectory(_stageDir);
+                        return UpdateCheckResult.Fail(current, "Download verification failed: " + rawCheck.Error);
+                    }
+                }
+                else if (_pending.AssetSizeBytes > 0)
+                {
+                    long len = new FileInfo(downloadPath).Length;
+                    if (Math.Abs(len - _pending.AssetSizeBytes) > 64)
+                    {
+                        // Zip size mismatch — soft warn; still extract and verify the inner exe
+                        AppLog.Warn("UpdateService.Download",
+                            $"Zip size mismatch: got {len}, expected {_pending.AssetSizeBytes}");
+                    }
+                }
+
                 string? exe;
                 if (isZip)
                 {
@@ -168,24 +238,45 @@ namespace PalAssist.Core
                         TryDeleteDirectory(_stageDir);
                         return UpdateCheckResult.Fail(current, "Zip did not contain PalAssist.exe.");
                     }
-                }
-                else
-                {
-                    if (!File.Exists(downloadPath) || new FileInfo(downloadPath).Length < 1024)
+
+                    // Inner exe: PE + min size (GitHub digest was for the zip, not the exe)
+                    var inner = VerifyDownloadedFile(exe, expectedSize: 0, expectedSha256: null, requirePe: true);
+                    if (!inner.Ok)
                     {
                         _stagedExePath = null;
                         TryDeleteDirectory(_stageDir);
-                        return UpdateCheckResult.Fail(current, "Downloaded file looks invalid.");
+                        return UpdateCheckResult.Fail(current, "Extracted exe invalid: " + inner.Error);
                     }
-
+                }
+                else
+                {
                     exe = downloadPath;
+                }
+
+                // Final gate before staging
+                var finalCheck = VerifyDownloadedFile(exe, expectedSize: isZip ? 0 : _pending.AssetSizeBytes,
+                    expectedSha256: isZip ? null : _pending.ExpectedSha256, requirePe: true);
+                if (!finalCheck.Ok)
+                {
+                    _stagedExePath = null;
+                    TryDeleteDirectory(_stageDir);
+                    return UpdateCheckResult.Fail(current, "Staged file verification failed: " + finalCheck.Error);
                 }
 
                 _stagedExePath = exe;
                 _keepStageForApply = true;
+                try
+                {
+                    File.WriteAllText(exe + ".sha256", ComputeSha256Hex(exe));
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Warn("UpdateService.Download", "Could not write sha256 sidecar: " + ex.Message);
+                }
 
-                _pending.Message = $"v{_pending.LatestVersion} ready to install";
+                _pending.Message = $"v{_pending.LatestVersion} ready to install (verified)";
                 _pending.Staged = true;
+                AppLog.Info("UpdateService", $"Staged update v{_pending.LatestVersion} ({finalCheck.Sha256?[..12]}…)");
                 return _pending;
             }
             catch (OperationCanceledException)
@@ -228,6 +319,33 @@ namespace PalAssist.Core
             if (!IsStaged || _stagedExePath == null)
                 return false;
 
+            // Re-verify immediately before install — catches corruption after staging
+            string? expectedHash = null;
+            try
+            {
+                string side = _stagedExePath + ".sha256";
+                if (File.Exists(side))
+                    expectedHash = File.ReadAllText(side).Trim();
+            }
+            catch { /* ignore */ }
+
+            if (string.IsNullOrEmpty(expectedHash) && !string.IsNullOrEmpty(_pending?.ExpectedSha256))
+                expectedHash = _pending!.ExpectedSha256;
+
+            var recheck = VerifyDownloadedFile(
+                _stagedExePath,
+                expectedSize: 0,
+                expectedSha256: expectedHash,
+                requirePe: true);
+            if (!recheck.Ok)
+            {
+                AppLog.Error("UpdateService.Apply", "Pre-install verify failed: " + recheck.Error);
+                _stagedExePath = null;
+                _keepStageForApply = false;
+                TryDeleteDirectory(_stageDir);
+                return false;
+            }
+
             string? installExe = Environment.ProcessPath
                 ?? Process.GetCurrentProcess().MainModule?.FileName;
 
@@ -237,12 +355,14 @@ namespace PalAssist.Core
             string installDir = Path.GetDirectoryName(installExe)!;
             int pid = Environment.ProcessId;
 
-            // Script lives in %TEMP% (not inside stage dir) so it can delete the stage folder.
+            // Marker so the new process force-releases keys on first launch
+            string postUpdateMarker = Path.Combine(installDir, "PalAssist2.postupdate");
+
             string scriptPath = Path.Combine(Path.GetTempPath(), $"PalAssist2_apply_{pid}.cmd");
             string staged = _stagedExePath;
             string stageDir = _stageDir;
 
-            // Wait for process exit, retry copy up to 5 times, restart, clean stage + self
+            // Wait for process exit, retry copy up to 5 times, write post-update marker, restart, clean
             string script =
                 "@echo off\r\n" +
                 "setlocal\r\n" +
@@ -262,6 +382,7 @@ namespace PalAssist.Core
                 "  ping 127.0.0.1 -n 2 >nul\r\n" +
                 "  goto copytry\r\n" +
                 ")\r\n" +
+                $"echo postupdate>\"{postUpdateMarker}\"\r\n" +
                 $"start \"\" \"{installExe}\"\r\n" +
                 "goto cleanup\r\n" +
                 ":fail\r\n" +
@@ -285,7 +406,36 @@ namespace PalAssist.Core
             };
 
             Process.Start(psi);
+            AppLog.Info("UpdateService", "Apply script launched");
             return true;
+        }
+
+        /// <summary>
+        /// Marker file written by the apply script next to the installed exe.
+        /// </summary>
+        public static string PostUpdateMarkerPath
+        {
+            get
+            {
+                string? dir = Path.GetDirectoryName(
+                    Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName);
+                return Path.Combine(dir ?? AppDomain.CurrentDomain.BaseDirectory, "PalAssist2.postupdate");
+            }
+        }
+
+        public static bool ConsumePostUpdateMarker()
+        {
+            try
+            {
+                string path = PostUpdateMarkerPath;
+                if (!File.Exists(path)) return false;
+                File.Delete(path);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public void Dispose()
@@ -318,7 +468,7 @@ namespace PalAssist.Core
         private static HttpClient CreateClient()
         {
             var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("PalAssist2-Updater/2.0");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("PalAssist2-Updater/2.0.1");
             return client;
         }
 
@@ -345,6 +495,107 @@ namespace PalAssist.Core
             }
 
             progress?.Report(100);
+        }
+
+        private readonly struct VerifyResult
+        {
+            public bool Ok { get; init; }
+            public string Error { get; init; }
+            public string? Sha256 { get; init; }
+            public static VerifyResult Fail(string error) => new() { Ok = false, Error = error };
+            public static VerifyResult Pass(string? sha) => new() { Ok = true, Error = "", Sha256 = sha };
+        }
+
+        /// <summary>
+        /// Validates a downloaded/staged binary: exists, min size, optional GitHub size,
+        /// optional SHA-256 (from API digest), and PE (MZ) header for .exe.
+        /// Authenticode is not required (releases may be unsigned); size+hash+PE are the bar.
+        /// </summary>
+        private static VerifyResult VerifyDownloadedFile(
+            string path,
+            long expectedSize,
+            string? expectedSha256,
+            bool requirePe)
+        {
+            try
+            {
+                if (!File.Exists(path))
+                    return VerifyResult.Fail("file missing");
+
+                var fi = new FileInfo(path);
+                if (fi.Length < 64 * 1024)
+                    return VerifyResult.Fail($"file too small ({fi.Length} bytes)");
+
+                // GitHub asset size — allow tiny drift only if CDN padding; exact when known
+                if (expectedSize > 1024 && Math.Abs(fi.Length - expectedSize) > 0)
+                    return VerifyResult.Fail($"size mismatch (got {fi.Length}, expected {expectedSize})");
+
+                if (requirePe && !LooksLikePeExecutable(path))
+                    return VerifyResult.Fail("not a valid Windows PE executable");
+
+                string sha = ComputeSha256Hex(path);
+                if (!string.IsNullOrWhiteSpace(expectedSha256))
+                {
+                    if (!string.Equals(sha, expectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
+                        return VerifyResult.Fail("SHA-256 mismatch (file may be corrupt or tampered)");
+                }
+
+                return VerifyResult.Pass(sha);
+            }
+            catch (Exception ex)
+            {
+                return VerifyResult.Fail(ex.Message);
+            }
+        }
+
+        private static bool LooksLikePeExecutable(string path)
+        {
+            try
+            {
+                using var fs = File.OpenRead(path);
+                if (fs.Length < 0x40) return false;
+                // MZ
+                if (fs.ReadByte() != 'M' || fs.ReadByte() != 'Z') return false;
+                fs.Seek(0x3C, SeekOrigin.Begin);
+                Span<byte> peOffBytes = stackalloc byte[4];
+                if (fs.Read(peOffBytes) != 4) return false;
+                int peOff = BitConverter.ToInt32(peOffBytes);
+                if (peOff <= 0 || peOff + 4 > fs.Length) return false;
+                fs.Seek(peOff, SeekOrigin.Begin);
+                // PE\0\0
+                return fs.ReadByte() == 'P' && fs.ReadByte() == 'E'
+                       && fs.ReadByte() == 0 && fs.ReadByte() == 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static string ComputeSha256Hex(string path)
+        {
+            using var fs = File.OpenRead(path);
+            byte[] hash = SHA256.HashData(fs);
+            return Convert.ToHexString(hash).ToLowerInvariant();
+        }
+
+        /// <summary>GitHub digest is often "sha256:HEX" — return lowercase hex or null.</summary>
+        private static string? NormalizeDigest(string? digest)
+        {
+            if (string.IsNullOrWhiteSpace(digest)) return null;
+            string s = digest.Trim();
+            const string prefix = "sha256:";
+            if (s.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                s = s[prefix.Length..];
+            s = s.Trim().ToLowerInvariant();
+            // Must look like hex
+            if (s.Length != 64) return null;
+            foreach (char c in s)
+            {
+                bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+                if (!hex) return null;
+            }
+            return s;
         }
 
         private static GitHubAsset? PickAsset(GitHubAsset[]? assets)
@@ -444,6 +695,8 @@ namespace PalAssist.Core
         public string? DownloadUrl { get; init; }
         public string AssetName { get; init; } = "";
         public long AssetSizeBytes { get; init; }
+        /// <summary>Optional GitHub release asset SHA-256 (hex), when API provides digest.</summary>
+        public string? ExpectedSha256 { get; init; }
         public string Message { get; set; } = "";
 
         public static UpdateCheckResult NoUpdate(string current, string message) => new()
@@ -488,5 +741,9 @@ namespace PalAssist.Core
 
         [JsonPropertyName("size")]
         public long Size { get; set; }
+
+        /// <summary>GitHub asset integrity digest, e.g. "sha256:…".</summary>
+        [JsonPropertyName("digest")]
+        public string? Digest { get; set; }
     }
 }

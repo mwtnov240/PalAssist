@@ -1,5 +1,13 @@
 # PalAssist Changelog
 
+## 2.0.1
+
+- **Update robustness:** verify downloaded EXE (PE header, size, optional GitHub SHA-256 digest)
+- Re-verify staged file immediately before install; reject corrupt downloads
+- Boot update check retries once on transient failures; never crashes the app on check errors
+- **Post-update first launch** force-releases keys (marker file + version change detection)
+- Clearer install status when verification blocks an update
+
 ## 2.0.0
 
 **PalAssist 2 — stability & long-run hardening**
