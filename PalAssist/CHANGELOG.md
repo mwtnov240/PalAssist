@@ -1,5 +1,14 @@
 # PalAssist Changelog
 
+## 1.5.0
+
+- **Vertical tabs** — left nav rail for more content space
+- **Help hints (?)** on features — hover for what / when to use
+- **Emergency Stop all** — disable assists and release held keys
+- **AFK safety** — auto-stop assists if Palworld is closed 10+ minutes (on by default)
+- **Config Manager** — open folder, export, import, reset to defaults
+- Safer key release on exit and unhandled exceptions (`PalAssist-crash.log`)
+
 ## 1.4.0
 
 - **What's Changed** tab — full version history in-app (newest first, scrollable)

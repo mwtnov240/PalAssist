@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -95,7 +97,13 @@ namespace PalAssist
         // ── UI restore guards (avoid recursive Checked handlers) ──
         private bool _suppressBetaEnabledHandler;
         private bool _suppressCrosshairHandlers;
+        private bool _suppressAfkSafetyHandler;
         private string _activeTab = "assists";
+
+        // ── AFK safety (Palworld closed ≥ 10 minutes) ──
+        private DateTime? _gameMissingSinceUtc;
+        private bool _afkSafetyFired;
+        private const double AfkSafetyMinutes = 10.0;
 
         public MainWindow()
         {
@@ -206,9 +214,13 @@ namespace PalAssist
 
             this.SizeChanged += (_, _) => { PositionHud(); PositionCrosshair(); ClampMenuToCanvas(); };
 
-            // ── UI timer for sprint status refresh (4 Hz is enough) ──
+            // ── UI timer: sprint status + AFK safety poll ──
             _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-            _uiTimer.Tick += (_, _) => SyncSprintStatus();
+            _uiTimer.Tick += (_, _) =>
+            {
+                SyncSprintStatus();
+                TickAfkSafety();
+            };
             _uiTimer.Start();
 
             // ── Focus Lock (stable) ──
@@ -216,11 +228,30 @@ namespace PalAssist
             _focusResumeTimer.Tick += FocusResumeTimer_Tick;
             RestoreFocusLockFromConfig(cfg);
 
+            // ── AFK safety UI ──
+            SetAfkSafetyToggleSilent(cfg.AfkSafetyEnabled);
+            if (_windowTracker?.IsFound != true)
+                _gameMissingSinceUtc = DateTime.UtcNow;
+
             // ── Beta gate + UI restore (only apply beta features if unlocked) ──
             ApplyBetaTabVisibility(cfg.BetaEnabled);
             SetBetaEnabledToggleSilent(cfg.BetaEnabled);
             if (cfg.BetaEnabled)
                 RestoreBetaUiFromConfig(cfg);
+
+            // Crash / emergency release callback while this window is alive
+            EmergencyRelease.SetCallback(() =>
+            {
+                try
+                {
+                    Dispatcher.Invoke(() => StopAllAssists(playSound: false, notify: false));
+                }
+                catch
+                {
+                    try { _featureManager?.ReleaseAllInput(); }
+                    catch { FeatureManager.ForceReleaseCommonKeys(); }
+                }
+            });
 
             // ── Crosshair restore ──
             RestoreCrosshairFromConfig(cfg);
@@ -304,20 +335,22 @@ namespace PalAssist
             PanelSettings.Visibility  = tab == "settings"  ? Visibility.Visible : Visibility.Collapsed;
             PanelChangelog.Visibility = tab == "changelog" ? Visibility.Visible : Visibility.Collapsed;
 
-            // Style active tab with cyan underline
+            // Vertical rail: cyan left border + accent text when active
             var cyanBrush = (SolidColorBrush)FindResource("AccentCyanBrush");
             var transBrush = Brushes.Transparent;
             var cyanFg = cyanBrush;
             var secFg  = (SolidColorBrush)FindResource("TextSecondaryBrush");
 
-            TabAssists.BorderBrush    = tab == "assists"   ? cyanBrush : transBrush;
-            TabAssists.Foreground     = tab == "assists"   ? cyanFg    : secFg;
-            TabBeta.BorderBrush       = tab == "beta"      ? cyanBrush : transBrush;
-            TabBeta.Foreground        = tab == "beta"      ? cyanFg    : secFg;
-            TabSettings.BorderBrush   = tab == "settings"  ? cyanBrush : transBrush;
-            TabSettings.Foreground    = tab == "settings"  ? cyanFg    : secFg;
-            TabChangelog.BorderBrush  = tab == "changelog" ? cyanBrush : transBrush;
-            TabChangelog.Foreground   = tab == "changelog" ? cyanFg    : secFg;
+            void StyleTab(Button btn, bool active)
+            {
+                btn.BorderBrush = active ? cyanBrush : transBrush;
+                btn.Foreground = active ? cyanFg : secFg;
+            }
+
+            StyleTab(TabAssists, tab == "assists");
+            StyleTab(TabBeta, tab == "beta");
+            StyleTab(TabSettings, tab == "settings");
+            StyleTab(TabChangelog, tab == "changelog");
         }
 
         // ─────────────────────────────────────────────────
@@ -371,7 +404,7 @@ namespace PalAssist
             RebindWorkAssistBtn.Content   = cfg.HotkeyWorkAssist;
             RebindSprintBtn.Content  = cfg.HotkeySprint;
 
-            WorkAssistSubtitle.Text   = $"Continuously holds the F key  ·  Hotkey: {cfg.HotkeyWorkAssist}";
+            WorkAssistSubtitle.Text   = $"Holds F  ·  Hotkey: {cfg.HotkeyWorkAssist}";
             SprintSubtitle.Text  = $"Auto forward + sprint cycles  ·  Hotkey: {cfg.HotkeySprint}";
 
             FooterMenuKey.Text   = cfg.HotkeyMenu;
@@ -609,16 +642,108 @@ namespace PalAssist
             if (!found)
             {
                 GameStatusText.Text = "Palworld not found";
+                if (_gameMissingSinceUtc == null)
+                    _gameMissingSinceUtc = DateTime.UtcNow;
                 // Focus path also fires; keep status labels in sync
                 UpdateFocusLockStatus();
                 return;
             }
+
+            _gameMissingSinceUtc = null;
+            _afkSafetyFired = false;
 
             string? platform = _windowTracker?.Platform;
             GameStatusText.Text = string.IsNullOrEmpty(platform)
                 ? "Palworld connected"
                 : $"Palworld connected ({platform})";
             UpdateFocusLockStatus();
+        }
+
+        private void TickAfkSafety()
+        {
+            if (_configManager?.Config.AfkSafetyEnabled != true) return;
+            if (_afkSafetyFired) return;
+            if (_gameMissingSinceUtc == null) return;
+            if (_windowTracker?.IsFound == true) return;
+
+            var missing = DateTime.UtcNow - _gameMissingSinceUtc.Value;
+            if (missing.TotalMinutes < AfkSafetyMinutes) return;
+
+            bool anyOn = (_workAssist?.IsEnabled == true)
+                         || (_sprint?.IsEnabled == true);
+            if (!anyOn)
+            {
+                _afkSafetyFired = true;
+                return;
+            }
+
+            _afkSafetyFired = true;
+            StopAllAssists(playSound: true, notify: true);
+            try
+            {
+                _trayService?.ShowBalloon(
+                    "PalAssist",
+                    "Assists stopped — Palworld was closed for 10+ minutes.",
+                    4000);
+            }
+            catch { /* ignore */ }
+        }
+
+        /// <summary>Disable all assists, release keys, sync UI toggles.</summary>
+        private void StopAllAssists(bool playSound, bool notify)
+        {
+            try
+            {
+                _featureManager?.ReleaseAllInput();
+            }
+            catch
+            {
+                FeatureManager.ForceReleaseCommonKeys();
+            }
+
+            if (WorkAssistToggle.IsChecked == true)
+                WorkAssistToggle.IsChecked = false;
+            if (SprintToggle.IsChecked == true)
+                SprintToggle.IsChecked = false;
+
+            SyncUI();
+
+            if (playSound)
+            {
+                try { _soundService.PlayToggle(false); } catch { /* ignore */ }
+            }
+
+            if (notify && ConfigStatusText != null)
+                ConfigStatusText.Text = "Assists stopped (AFK safety or emergency stop).";
+        }
+
+        private void StopAllAssistsBtn_Click(object s, RoutedEventArgs e)
+        {
+            StopAllAssists(playSound: true, notify: true);
+            if (ConfigStatusText != null)
+                ConfigStatusText.Text = "All assists stopped and keys released.";
+        }
+
+        private void SetAfkSafetyToggleSilent(bool enabled)
+        {
+            _suppressAfkSafetyHandler = true;
+            try
+            {
+                AfkSafetyToggle.IsChecked = enabled;
+            }
+            finally
+            {
+                _suppressAfkSafetyHandler = false;
+            }
+        }
+
+        private void AfkSafetyToggle_Changed(object s, RoutedEventArgs e)
+        {
+            if (_suppressAfkSafetyHandler || _configManager == null) return;
+            _configManager.Config.AfkSafetyEnabled = AfkSafetyToggle.IsChecked == true;
+            _configManager.Save();
+            if (AfkSafetyToggle.IsChecked != true)
+                _afkSafetyFired = false;
         }
 
         // ─────────────────────────────────────────────────
@@ -955,6 +1080,7 @@ namespace PalAssist
             cfg.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
                                      && cfg.BetaEnabled;
             ApplySmartWorkAssistToFeature(cfg.BetaSmartWorkAssist);
+            cfg.AfkSafetyEnabled = AfkSafetyToggle.IsChecked == true;
 
             SyncAppearanceConfigFromUi(cfg);
             SyncSoundConfigFromUi(cfg);
@@ -1538,6 +1664,18 @@ namespace PalAssist
                 return;
             }
 
+            // Real exit: always release keys first (before any dispose that might throw)
+            try
+            {
+                _featureManager?.ReleaseAllInput();
+            }
+            catch
+            {
+                FeatureManager.ForceReleaseCommonKeys();
+            }
+
+            EmergencyRelease.SetCallback(null);
+
             _uiTimer?.Stop();
             _focusResumeTimer?.Stop();
             _updateCts?.Cancel();
@@ -1545,33 +1683,217 @@ namespace PalAssist
 
             if (_configManager != null)
             {
-                if (_workAssist != null)  _configManager.Config.WorkAssistEnabled  = _workAssist.IsEnabled;
-                _configManager.Config.SprintEnabled = SprintAssistAvailable && _sprint != null && _sprint.IsEnabled;
-                _configManager.Config.BetaProfileWorkEnabled = false;
-                _configManager.Config.MenuX = Canvas.GetLeft(MenuPanel);
-                _configManager.Config.MenuY = Canvas.GetTop(MenuPanel);
-                _configManager.Config.BetaEnabled = BetaEnabledToggle.IsChecked == true;
-                _configManager.Config.FocusLockEnabled = FocusLockToggle.IsChecked == true;
-                _configManager.Config.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
-                                                           && _configManager.Config.BetaEnabled;
-                SyncAppearanceConfigFromUi(_configManager.Config);
-                SyncSoundConfigFromUi(_configManager.Config);
-                SyncTrayConfigFromUi(_configManager.Config);
-                SyncCrosshairConfigFromUi(_configManager.Config);
-                _configManager.Save();
+                try
+                {
+                    if (_workAssist != null)  _configManager.Config.WorkAssistEnabled  = _workAssist.IsEnabled;
+                    _configManager.Config.SprintEnabled = SprintAssistAvailable && _sprint != null && _sprint.IsEnabled;
+                    _configManager.Config.BetaProfileWorkEnabled = false;
+                    _configManager.Config.MenuX = Canvas.GetLeft(MenuPanel);
+                    _configManager.Config.MenuY = Canvas.GetTop(MenuPanel);
+                    _configManager.Config.BetaEnabled = BetaEnabledToggle.IsChecked == true;
+                    _configManager.Config.FocusLockEnabled = FocusLockToggle.IsChecked == true;
+                    _configManager.Config.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
+                                                               && _configManager.Config.BetaEnabled;
+                    _configManager.Config.AfkSafetyEnabled = AfkSafetyToggle.IsChecked == true;
+                    SyncAppearanceConfigFromUi(_configManager.Config);
+                    SyncSoundConfigFromUi(_configManager.Config);
+                    SyncTrayConfigFromUi(_configManager.Config);
+                    SyncCrosshairConfigFromUi(_configManager.Config);
+                    _configManager.Save();
+                }
+                catch
+                {
+                    // never block exit on save failure
+                }
             }
 
-            _trayService?.Dispose();
-            _featureManager?.Dispose();
-            _hotkeyManager?.Dispose();
-            _windowTracker?.Dispose();
-            _updateService?.Dispose();
+            try { _trayService?.Dispose(); } catch { /* ignore */ }
+            try { _featureManager?.Dispose(); } catch { FeatureManager.ForceReleaseCommonKeys(); }
+            try { _hotkeyManager?.Dispose(); } catch { /* ignore */ }
+            try { _windowTracker?.Dispose(); } catch { /* ignore */ }
+            try { _updateService?.Dispose(); } catch { /* ignore */ }
         }
 
         private void RequestExit()
         {
             _allowClose = true;
+            try { _featureManager?.ReleaseAllInput(); } catch { FeatureManager.ForceReleaseCommonKeys(); }
             Close();
+        }
+
+        // ─────────────────────────────────────────────────
+        //  Config Manager
+        // ─────────────────────────────────────────────────
+
+        private void ConfigOpenFolderBtn_Click(object s, RoutedEventArgs e)
+        {
+            if (_configManager == null) return;
+            try
+            {
+                string dir = _configManager.ConfigDirectory;
+                if (!Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"\"{dir}\"",
+                    UseShellExecute = true
+                });
+                ConfigStatusText.Text = "Opened config folder.";
+            }
+            catch (Exception ex)
+            {
+                ConfigStatusText.Text = "Could not open folder: " + ex.Message;
+            }
+        }
+
+        private void ConfigExportBtn_Click(object s, RoutedEventArgs e)
+        {
+            if (_configManager == null) return;
+            SyncLiveConfigToManager();
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Export PalAssist config",
+                Filter = "JSON config|*.json|All files|*.*",
+                FileName = "PalAssist-config.json",
+                AddExtension = true,
+                DefaultExt = ".json"
+            };
+            if (dlg.ShowDialog() != true) return;
+            bool ok = _configManager.ExportTo(dlg.FileName);
+            ConfigStatusText.Text = ok ? "Config exported." : "Export failed.";
+        }
+
+        private void ConfigImportBtn_Click(object s, RoutedEventArgs e)
+        {
+            if (_configManager == null) return;
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Import PalAssist config",
+                Filter = "JSON config|*.json|All files|*.*",
+                CheckFileExists = true
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            var confirm = MessageBox.Show(
+                this,
+                "Import this config and replace your current settings?\n\nHotkeys and appearance will re-apply immediately.",
+                "Import config",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            bool ok = _configManager.ImportFrom(dlg.FileName);
+            if (!ok)
+            {
+                ConfigStatusText.Text = "Import failed — invalid or unreadable file.";
+                return;
+            }
+
+            ApplyImportedConfigToUi();
+            ConfigStatusText.Text = "Config imported.";
+        }
+
+        private void ConfigResetBtn_Click(object s, RoutedEventArgs e)
+        {
+            if (_configManager == null) return;
+            var confirm = MessageBox.Show(
+                this,
+                "Reset all settings to defaults?\n\nThis cannot be undone (export a backup first if needed).",
+                "Reset defaults",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            // Keep last_seen_version so What's New doesn't spam after reset
+            string lastSeen = _configManager.Config.LastSeenVersion;
+            bool ok = _configManager.ResetToDefaults();
+            if (!ok)
+            {
+                ConfigStatusText.Text = "Reset failed.";
+                return;
+            }
+            _configManager.Config.LastSeenVersion = lastSeen;
+            _configManager.Save();
+            ApplyImportedConfigToUi();
+            ConfigStatusText.Text = "Settings reset to defaults.";
+        }
+
+        /// <summary>Push current UI feature state into ConfigManager before export/save.</summary>
+        private void SyncLiveConfigToManager()
+        {
+            if (_configManager == null) return;
+            var cfg = _configManager.Config;
+            if (_workAssist != null) cfg.WorkAssistEnabled = _workAssist.IsEnabled;
+            cfg.SprintEnabled = SprintAssistAvailable && _sprint != null && _sprint.IsEnabled;
+            cfg.WorkAssistShowHud = WorkAssistShowHudCheck.IsChecked == true;
+            cfg.FocusLockEnabled = FocusLockToggle.IsChecked == true;
+            cfg.BetaEnabled = BetaEnabledToggle.IsChecked == true;
+            cfg.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true && cfg.BetaEnabled;
+            cfg.AfkSafetyEnabled = AfkSafetyToggle.IsChecked == true;
+            cfg.MenuX = Canvas.GetLeft(MenuPanel);
+            cfg.MenuY = Canvas.GetTop(MenuPanel);
+            SyncAppearanceConfigFromUi(cfg);
+            SyncSoundConfigFromUi(cfg);
+            SyncTrayConfigFromUi(cfg);
+            SyncCrosshairConfigFromUi(cfg);
+            if (HudPresetCombo.SelectedItem != null)
+                cfg.HudPreset = ((ComboBoxItem)HudPresetCombo.SelectedItem).Content.ToString()!.Replace("-", "");
+            _configManager.Save();
+        }
+
+        /// <summary>Re-apply config after import/reset (hotkeys, toggles, appearance).</summary>
+        private void ApplyImportedConfigToUi()
+        {
+            if (_configManager == null) return;
+            var cfg = _configManager.Config;
+
+            // Stop assists before rebinding
+            StopAllAssists(playSound: false, notify: false);
+
+            ThemeService.Apply(cfg.UiTheme);
+            ApplySoundFromConfig(cfg);
+            RestoreAppearanceFromConfig(cfg);
+            RestoreSoundUiFromConfig(cfg);
+            RestoreTrayUiFromConfig(cfg);
+            RestoreCrosshairFromConfig(cfg);
+            RestoreFocusLockFromConfig(cfg);
+            SetAfkSafetyToggleSilent(cfg.AfkSafetyEnabled);
+
+            ApplyBetaTabVisibility(cfg.BetaEnabled);
+            SetBetaEnabledToggleSilent(cfg.BetaEnabled);
+            if (cfg.BetaEnabled)
+                RestoreBetaUiFromConfig(cfg);
+            else
+                ApplySmartWorkAssistToFeature(false);
+
+            HudDraggableToggle.IsChecked = cfg.HudDraggable;
+            WorkAssistShowHudCheck.IsChecked = cfg.WorkAssistShowHud;
+            SetHudPresetCombo(cfg.HudPreset);
+            SprintDurSlider.Value = cfg.SprintDuration;
+            RecoveryDurSlider.Value = cfg.RecoveryDuration;
+            PauseDodgeCheck.IsChecked = cfg.SprintPauseDodge;
+
+            // Re-register hotkeys from imported names
+            try
+            {
+                if (_hotkeyManager != null)
+                {
+                    if (_menuHotkeyId >= 0) _hotkeyManager.Unregister(_menuHotkeyId);
+                    if (_workAssistHotkeyId >= 0) _hotkeyManager.Unregister(_workAssistHotkeyId);
+                    if (_sprintHotkeyId >= 0) _hotkeyManager.Unregister(_sprintHotkeyId);
+                    _menuHotkeyId = _workAssistHotkeyId = _sprintHotkeyId = -1;
+                    RegisterConfigHotkeys();
+                }
+            }
+            catch
+            {
+                ConfigStatusText.Text = "Config loaded — restart recommended if hotkeys misbehave.";
+            }
+
+            InitTray(cfg);
+            PositionHud();
+            SyncUI();
         }
 
         // ─────────────────────────────────────────────────

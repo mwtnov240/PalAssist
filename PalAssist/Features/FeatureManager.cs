@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Timers;
+using PalAssist.Core;
+using PalAssist.Win32;
 
 namespace PalAssist.Features
 {
@@ -68,7 +70,33 @@ namespace PalAssist.Features
                 if (f.IsEnabled)
                     f.OnDisable();
             }
+            _inputSuspended = false;
             StateChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Disable every assist and force-release keys commonly used by PalAssist.
+        /// Safe to call on exit, AFK safety, emergency stop, or crash handlers.
+        /// </summary>
+        public void ReleaseAllInput()
+        {
+            try
+            {
+                DisableAll();
+            }
+            catch
+            {
+                // continue to hard key-ups
+            }
+
+            try
+            {
+                ForceReleaseCommonKeys();
+            }
+            catch
+            {
+                // best-effort only
+            }
         }
 
         /// <summary>
@@ -101,14 +129,39 @@ namespace PalAssist.Features
             }
         }
 
+        /// <summary>Hard KeyUp for keys PalAssist may hold, even if feature state is wrong.</summary>
+        public static void ForceReleaseCommonKeys()
+        {
+            try
+            {
+                InputSimulator.KeyUp(NativeMethods.VK_F, NativeMethods.SCAN_F);
+                InputSimulator.KeyUp(NativeMethods.VK_W, NativeMethods.SCAN_W);
+                InputSimulator.KeyUp(NativeMethods.VK_E, NativeMethods.SCAN_E);
+                InputSimulator.KeyUp(NativeMethods.VK_LSHIFT, NativeMethods.SCAN_SHIFT);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
         public void Dispose()
         {
             if (_disposed) return;
             _disposed = true;
 
-            _tickTimer.Stop();
-            _tickTimer.Dispose();
-            DisableAll();
+            try
+            {
+                _tickTimer.Stop();
+                _tickTimer.Dispose();
+            }
+            catch { /* ignore */ }
+
+            try
+            {
+                ReleaseAllInput();
+            }
+            catch { /* ignore */ }
         }
     }
 }
