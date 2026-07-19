@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using PalAssist.Features;
 
 namespace PalAssist.Core
@@ -7,21 +6,42 @@ namespace PalAssist.Core
     /// <summary>
     /// Process-wide best-effort key release for exit and crash paths.
     /// MainWindow registers a callback while it is alive.
+    /// Optional state snapshot improves crash logs.
     /// </summary>
     public static class EmergencyRelease
     {
         private static readonly object Gate = new();
         private static Action? _releaseCallback;
+        private static Func<string>? _stateSnapshot;
 
-        /// <summary>Register the live window's release routine (or null to clear).</summary>
         public static void SetCallback(Action? callback)
         {
             lock (Gate)
                 _releaseCallback = callback;
         }
 
+        public static void SetStateSnapshot(Func<string>? snapshot)
+        {
+            lock (Gate)
+                _stateSnapshot = snapshot;
+        }
+
+        public static string? CaptureState()
+        {
+            try
+            {
+                Func<string>? snap;
+                lock (Gate) snap = _stateSnapshot;
+                return snap?.Invoke();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         /// <summary>
-        /// Disable assists / release keys. Safe to call from any thread.
+        /// Disable assists / release keys. Safe from any thread.
         /// Always attempts a hard KeyUp even if no callback is registered.
         /// </summary>
         public static void ReleaseAll()
@@ -34,34 +54,25 @@ namespace PalAssist.Core
             {
                 cb?.Invoke();
             }
-            catch
+            catch (Exception ex)
             {
-                // ignore
+                AppLog.Error("EmergencyRelease.callback", ex.Message, ex);
             }
 
             try
             {
                 FeatureManager.ForceReleaseCommonKeys();
             }
-            catch
+            catch (Exception ex)
             {
-                // ignore
+                AppLog.Error("EmergencyRelease.ForceRelease", ex.Message, ex);
             }
         }
 
-        /// <summary>Append a crash line next to the executable.</summary>
         public static void LogCrash(string source, Exception? ex)
         {
-            try
-            {
-                string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PalAssist-crash.log");
-                string line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {source}: {ex?.GetType().Name}: {ex?.Message}\n{ex?.StackTrace}\n---\n";
-                File.AppendAllText(path, line);
-            }
-            catch
-            {
-                // ignore
-            }
+            string? state = CaptureState();
+            AppLog.Crash(source, ex, state);
         }
     }
 }

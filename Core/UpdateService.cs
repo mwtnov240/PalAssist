@@ -25,13 +25,19 @@ namespace PalAssist.Core
         private static readonly HttpClient Http = CreateClient();
 
         private readonly string _stageDir;
+        private readonly CancellationTokenSource _cts = new();
         private string? _stagedExePath;
         private UpdateCheckResult? _pending;
+        private bool _disposed;
+        private bool _keepStageForApply;
 
         public UpdateService()
         {
-            _stageDir = Path.Combine(Path.GetTempPath(), "PalAssistUpdate");
+            _stageDir = Path.Combine(Path.GetTempPath(), "PalAssist2Update");
         }
+
+        /// <summary>Token cancelled when the service is disposed (app exit).</summary>
+        public CancellationToken DisposeToken => _cts.Token;
 
         /// <summary>Currently staged update, if any.</summary>
         public UpdateCheckResult? PendingUpdate => _pending;
@@ -138,11 +144,14 @@ namespace PalAssist.Core
 
             try
             {
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token);
+                var token = linked.Token;
+
                 if (Directory.Exists(_stageDir))
-                    Directory.Delete(_stageDir, recursive: true);
+                    TryDeleteDirectory(_stageDir);
                 Directory.CreateDirectory(_stageDir);
 
-                await DownloadFileAsync(_pending.DownloadUrl!, downloadPath, progress, ct).ConfigureAwait(false);
+                await DownloadFileAsync(_pending.DownloadUrl!, downloadPath, progress, token).ConfigureAwait(false);
 
                 string? exe;
                 if (isZip)
@@ -156,15 +165,16 @@ namespace PalAssist.Core
                     if (exe == null || !File.Exists(exe))
                     {
                         _stagedExePath = null;
+                        TryDeleteDirectory(_stageDir);
                         return UpdateCheckResult.Fail(current, "Zip did not contain PalAssist.exe.");
                     }
                 }
                 else
                 {
-                    // Direct .exe asset — already staged at downloadPath
                     if (!File.Exists(downloadPath) || new FileInfo(downloadPath).Length < 1024)
                     {
                         _stagedExePath = null;
+                        TryDeleteDirectory(_stageDir);
                         return UpdateCheckResult.Fail(current, "Downloaded file looks invalid.");
                     }
 
@@ -172,6 +182,7 @@ namespace PalAssist.Core
                 }
 
                 _stagedExePath = exe;
+                _keepStageForApply = true;
 
                 _pending.Message = $"v{_pending.LatestVersion} ready to install";
                 _pending.Staged = true;
@@ -179,11 +190,17 @@ namespace PalAssist.Core
             }
             catch (OperationCanceledException)
             {
+                _stagedExePath = null;
+                _keepStageForApply = false;
+                TryDeleteDirectory(_stageDir);
                 throw;
             }
             catch (Exception ex)
             {
+                AppLog.Error("UpdateService.Download", ex.Message, ex);
                 _stagedExePath = null;
+                _keepStageForApply = false;
+                TryDeleteDirectory(_stageDir);
                 return UpdateCheckResult.Fail(current, $"Download failed: {ex.Message}");
             }
         }
@@ -221,13 +238,15 @@ namespace PalAssist.Core
             int pid = Environment.ProcessId;
 
             // Script lives in %TEMP% (not inside stage dir) so it can delete the stage folder.
-            string scriptPath = Path.Combine(Path.GetTempPath(), $"PalAssist_apply_{pid}.cmd");
+            string scriptPath = Path.Combine(Path.GetTempPath(), $"PalAssist2_apply_{pid}.cmd");
             string staged = _stagedExePath;
             string stageDir = _stageDir;
 
+            // Wait for process exit, retry copy up to 5 times, restart, clean stage + self
             string script =
                 "@echo off\r\n" +
                 "setlocal\r\n" +
+                "set RETRIES=0\r\n" +
                 ":wait\r\n" +
                 $"tasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul\r\n" +
                 "if not errorlevel 1 (\r\n" +
@@ -235,17 +254,25 @@ namespace PalAssist.Core
                 "  goto wait\r\n" +
                 ")\r\n" +
                 "ping 127.0.0.1 -n 2 >nul\r\n" +
+                ":copytry\r\n" +
                 $"copy /Y \"{staged}\" \"{installExe}\" >nul\r\n" +
                 "if errorlevel 1 (\r\n" +
+                "  set /a RETRIES+=1\r\n" +
+                "  if %RETRIES% GEQ 5 goto fail\r\n" +
                 "  ping 127.0.0.1 -n 2 >nul\r\n" +
-                $"  copy /Y \"{staged}\" \"{installExe}\" >nul\r\n" +
+                "  goto copytry\r\n" +
                 ")\r\n" +
                 $"start \"\" \"{installExe}\"\r\n" +
+                "goto cleanup\r\n" +
+                ":fail\r\n" +
+                "echo PalAssist update copy failed.>>\"%TEMP%\\PalAssist2_update_fail.log\"\r\n" +
+                ":cleanup\r\n" +
                 $"rmdir /S /Q \"{stageDir}\" 2>nul\r\n" +
                 "endlocal\r\n" +
                 "del \"%~f0\" >nul 2>&1\r\n";
 
             File.WriteAllText(scriptPath, script);
+            _keepStageForApply = true;
 
             var psi = new ProcessStartInfo
             {
@@ -263,16 +290,35 @@ namespace PalAssist.Core
 
         public void Dispose()
         {
-            // Intentionally leave staged files if an update is ready; apply script cleans them.
+            if (_disposed) return;
+            _disposed = true;
+            try { _cts.Cancel(); } catch { /* ignore */ }
+            try { _cts.Dispose(); } catch { /* ignore */ }
+
+            // Leave staged files only if apply script was launched
+            if (!_keepStageForApply || !IsStaged)
+                TryDeleteDirectory(_stageDir);
         }
 
         // ── helpers ──────────────────────────────────────────
 
+        private static void TryDeleteDirectory(string dir)
+        {
+            try
+            {
+                if (Directory.Exists(dir))
+                    Directory.Delete(dir, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("UpdateService.Cleanup", "Could not delete stage: " + ex.Message);
+            }
+        }
+
         private static HttpClient CreateClient()
         {
             var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-            // User-Agent required by GitHub API; do not set Accept globally (breaks binary downloads).
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("PalAssist-Updater");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("PalAssist2-Updater/2.0");
             return client;
         }
 

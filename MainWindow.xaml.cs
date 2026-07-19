@@ -151,7 +151,7 @@ namespace PalAssist
                     RecoveryDurationSec = cfg.RecoveryDuration,
                     PauseDodge         = cfg.SprintPauseDodge
                 };
-                _sprint.StateChanged += () => Dispatcher.Invoke(SyncSprintStatus);
+                _sprint.StateChanged += () => UiPost(SyncSprintStatus);
                 _featureManager.Register(_sprint);
             }
             else
@@ -160,17 +160,17 @@ namespace PalAssist
                 cfg.SprintEnabled = false;
             }
 
-            // Work Profiles removed in v1.4 — force off leftover config
+            // Work Profiles removed — force off leftover config
             cfg.BetaProfileWorkEnabled = false;
 
-            _featureManager.StateChanged += () => Dispatcher.Invoke(SyncUI);
+            _featureManager.StateChanged += () => UiPost(SyncUI);
             _featureManager.Start();
 
             // ── Window tracker ──
             _windowTracker = new WindowTracker();
-            _windowTracker.BoundsChanged += rect => Dispatcher.Invoke(() => AlignToGame(rect));
-            _windowTracker.GameDetected  += found => Dispatcher.Invoke(() => OnGameDetected(found));
-            _windowTracker.FocusChanged  += focused => Dispatcher.Invoke(() => OnGameFocusChanged(focused));
+            _windowTracker.BoundsChanged += rect => UiPost(() => AlignToGame(rect));
+            _windowTracker.GameDetected  += found => UiPost(() => OnGameDetected(found));
+            _windowTracker.FocusChanged  += focused => UiPost(() => OnGameFocusChanged(focused));
             _windowTracker.Start();
 
             // ── WndProc hook ──
@@ -218,8 +218,15 @@ namespace PalAssist
             _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
             _uiTimer.Tick += (_, _) =>
             {
-                SyncSprintStatus();
-                TickAfkSafety();
+                try
+                {
+                    SyncSprintStatus();
+                    TickAfkSafety();
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Error("MainWindow.UiTimer", ex.Message, ex);
+                }
             };
             _uiTimer.Start();
 
@@ -244,7 +251,11 @@ namespace PalAssist
             {
                 try
                 {
-                    Dispatcher.Invoke(() => StopAllAssists(playSound: false, notify: false));
+                    if (Dispatcher.CheckAccess())
+                        StopAllAssists(playSound: false, notify: false);
+                    else
+                        Dispatcher.Invoke(() => StopAllAssists(playSound: false, notify: false),
+                            DispatcherPriority.Send);
                 }
                 catch
                 {
@@ -252,6 +263,19 @@ namespace PalAssist
                     catch { FeatureManager.ForceReleaseCommonKeys(); }
                 }
             });
+            EmergencyRelease.SetStateSnapshot(() =>
+            {
+                try
+                {
+                    bool found = _windowTracker?.IsFound == true;
+                    bool focused = _windowTracker?.IsFocused == true;
+                    bool work = _workAssist?.IsEnabled == true;
+                    bool susp = _featureManager?.IsInputSuspended == true;
+                    return $"found={found} focused={focused} work={work} suspended={susp}";
+                }
+                catch { return "(snapshot failed)"; }
+            });
+            AppLog.Info("MainWindow", "Loaded PalAssist 2");
 
             // ── Crosshair restore ──
             RestoreCrosshairFromConfig(cfg);
@@ -306,9 +330,33 @@ namespace PalAssist
         private void RefreshVersionLabels()
         {
             string v = UpdateService.GetCurrentVersion();
-            HeaderVersionText.Text = $"v{v} — External Input Assist";
-            VersionText.Text = $"PalAssist v{v}";
-            Title = $"PalAssist v{v}";
+            HeaderVersionText.Text = $"v{v} — PalAssist 2";
+            VersionText.Text = $"PalAssist 2  v{v}";
+            Title = $"PalAssist 2  v{v}";
+        }
+
+        /// <summary>Fire-and-forget UI work from thread-pool callbacks (never block the timer).</summary>
+        private void UiPost(Action action)
+        {
+            try
+            {
+                if (Dispatcher.CheckAccess())
+                {
+                    try { action(); }
+                    catch (Exception ex) { AppLog.Error("MainWindow.UiPost", ex.Message, ex); }
+                    return;
+                }
+
+                _ = Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try { action(); }
+                    catch (Exception ex) { AppLog.Error("MainWindow.UiPost", ex.Message, ex); }
+                }), DispatcherPriority.Normal);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("MainWindow.UiPost.Marshal", ex.Message, ex);
+            }
         }
 
         // ─────────────────────────────────────────────────
@@ -501,6 +549,8 @@ namespace PalAssist
         private void RebindWorkAssistBtn_Click(object s, RoutedEventArgs e)  => StartRebind("workAssist");
         private void RebindSprintBtn_Click(object s, RoutedEventArgs e) => StartRebind("sprint");
 
+        private bool _rebindClearedNoActivate;
+
         private void StartRebind(string target)
         {
             _rebindTarget = target;
@@ -518,65 +568,94 @@ namespace PalAssist
         {
             // Temporarily allow the overlay to be activated/focused so PreviewKeyDown fires.
             // Without this, WS_EX_NOACTIVATE silently blocks all keyboard input.
-            int exStyle = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
-            exStyle &= ~NativeMethods.WS_EX_NOACTIVATE;
-            NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
+            try
+            {
+                int exStyle = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
+                exStyle &= ~NativeMethods.WS_EX_NOACTIVATE;
+                NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
+                _rebindClearedNoActivate = true;
+                this.Activate();
+                this.Focus();
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("MainWindow.BeginKeyCapture", ex.Message, ex);
+                RestoreNoActivateStyle();
+            }
+        }
 
-            this.Activate();
-            this.Focus();
+        /// <summary>Always restore WS_EX_NOACTIVATE after rebind (try/finally safety).</summary>
+        private void RestoreNoActivateStyle()
+        {
+            try
+            {
+                if (!_rebindClearedNoActivate && _hwnd == IntPtr.Zero) return;
+                int exStyle = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
+                exStyle |= NativeMethods.WS_EX_NOACTIVATE;
+                NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("MainWindow.RestoreNoActivate", ex.Message, ex);
+            }
+            finally
+            {
+                _rebindClearedNoActivate = false;
+            }
         }
 
         /// <summary>Restores WS_EX_NOACTIVATE after a rebind completes or is cancelled.</summary>
         private void EndRebind()
         {
             _rebindTarget = null;
-
-            // Restore the no-activate flag so the game keeps focus normally.
-            int exStyle = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
-            exStyle |= NativeMethods.WS_EX_NOACTIVATE;
-            NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
-
-            RefreshHotkeyLabels();
+            RestoreNoActivateStyle();
+            try { RefreshHotkeyLabels(); }
+            catch (Exception ex) { AppLog.Error("MainWindow.EndRebind", ex.Message, ex); }
         }
 
         private void OnPreviewKeyDown(object sender, KeyEventArgs e)
         {
             if (_rebindTarget == null) return;
-            Key key = (e.Key == Key.System) ? e.SystemKey : e.Key;
-            if (key == Key.LeftShift || key == Key.RightShift ||
-                key == Key.LeftCtrl  || key == Key.RightCtrl  ||
-                key == Key.LeftAlt   || key == Key.RightAlt   ||
-                key == Key.LWin      || key == Key.RWin) return;
-
-            e.Handled = true;
-
-            // Escape → cancel
-            if (key == Key.Escape)
+            try
             {
+                Key key = (e.Key == Key.System) ? e.SystemKey : e.Key;
+                if (key == Key.LeftShift || key == Key.RightShift ||
+                    key == Key.LeftCtrl  || key == Key.RightCtrl  ||
+                    key == Key.LeftAlt   || key == Key.RightAlt   ||
+                    key == Key.LWin      || key == Key.RWin) return;
+
+                e.Handled = true;
+
+                if (key == Key.Escape)
+                {
+                    EndRebind();
+                    return;
+                }
+
+                uint vk = KeyHelper.WpfKeyToVk(key);
+                string name = KeyHelper.WpfKeyToName(key);
+
+                if (vk == 0)
+                {
+                    EndRebind();
+                    return;
+                }
+
+                string savedTarget = _rebindTarget!;
+
+                ref int id = ref _menuHotkeyId;
+                if (savedTarget == "workAssist")  id = ref _workAssistHotkeyId;
+                if (savedTarget == "sprint") id = ref _sprintHotkeyId;
+
+                // Restore NOACTIVATE before re-registering hotkeys
                 EndRebind();
-                return;
+                ApplyRebind(ref id, vk, name, savedTarget);
             }
-
-            uint vk = KeyHelper.WpfKeyToVk(key);
-            string name = KeyHelper.WpfKeyToName(key);
-
-            // Unknown key → cancel
-            if (vk == 0)
+            catch (Exception ex)
             {
+                AppLog.Error("MainWindow.OnPreviewKeyDown", ex.Message, ex);
                 EndRebind();
-                return;
             }
-
-            // Save target before EndRebind clears _rebindTarget
-            string savedTarget = _rebindTarget!;
-
-            ref int id = ref _menuHotkeyId;
-            if (savedTarget == "workAssist")  id = ref _workAssistHotkeyId;
-            if (savedTarget == "sprint") id = ref _sprintHotkeyId;
-
-            // Restore WS_EX_NOACTIVATE BEFORE re-registering so hotkey fires correctly
-            EndRebind();
-            ApplyRebind(ref id, vk, name, savedTarget);
         }
 
         private void ApplyRebind(ref int hotkeyId, uint newVk, string newName, string target)
@@ -682,7 +761,7 @@ namespace PalAssist
             try
             {
                 _trayService?.ShowBalloon(
-                    "PalAssist",
+                    "PalAssist 2",
                     "Assists stopped — Palworld was closed for 10+ minutes.",
                     4000);
             }
@@ -1011,17 +1090,24 @@ namespace PalAssist
 
         private void FocusResumeTimer_Tick(object? sender, EventArgs e)
         {
-            _focusResumeTimer?.Stop();
-            if (_focusLockWantSuspend) return;
-            if (_configManager?.Config.FocusLockEnabled != true || _featureManager == null) return;
-            if (_windowTracker?.IsFocused != true) return;
-
-            if (_featureManager.IsInputSuspended)
+            try
             {
-                _featureManager.SetInputSuspended(false);
-                _soundService.PlayFocus(suspended: false);
+                _focusResumeTimer?.Stop();
+                if (_focusLockWantSuspend) return;
+                if (_configManager?.Config.FocusLockEnabled != true || _featureManager == null) return;
+                if (_windowTracker?.IsFocused != true) return;
+
+                if (_featureManager.IsInputSuspended)
+                {
+                    _featureManager.SetInputSuspended(false);
+                    _soundService.PlayFocus(suspended: false);
+                }
+                UpdateFocusLockStatus();
             }
-            UpdateFocusLockStatus();
+            catch (Exception ex)
+            {
+                AppLog.Error("MainWindow.FocusResumeTimer", ex.Message, ex);
+            }
         }
 
         private void FocusLockToggle_Changed(object s, RoutedEventArgs e)
@@ -1660,7 +1746,7 @@ namespace PalAssist
                 e.Cancel = true;
                 SetMenuVisible(false);
                 ShowInTaskbar = false;
-                _trayService?.ShowBalloon("PalAssist", "Still running in the tray. Right-click the icon to Exit.", 2500);
+                _trayService?.ShowBalloon("PalAssist 2", "Still running in the tray. Right-click the icon to Exit.", 2500);
                 return;
             }
 
@@ -2111,19 +2197,19 @@ namespace PalAssist
             if (_trayService == null)
             {
                 _trayService = new TrayService();
-                _trayService.Initialize($"PalAssist v{UpdateService.GetCurrentVersion()}");
-                _trayService.ShowMenuRequested += () => Dispatcher.Invoke(() =>
+                _trayService.Initialize($"PalAssist 2 v{UpdateService.GetCurrentVersion()}");
+                _trayService.ShowMenuRequested += () => UiPost(() =>
                 {
                     ShowInTaskbar = true;
                     SetMenuVisible(true);
                     Activate();
                 });
-                _trayService.HideMenuRequested += () => Dispatcher.Invoke(() => SetMenuVisible(false));
-                _trayService.ExitRequested += () => Dispatcher.Invoke(RequestExit);
+                _trayService.HideMenuRequested += () => UiPost(() => SetMenuVisible(false));
+                _trayService.ExitRequested += () => UiPost(RequestExit);
             }
             else
             {
-                _trayService.SetTooltip($"PalAssist v{UpdateService.GetCurrentVersion()}");
+                _trayService.SetTooltip($"PalAssist 2 v{UpdateService.GetCurrentVersion()}");
             }
 
             _trayService.SetVisible(true);

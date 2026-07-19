@@ -57,11 +57,18 @@ namespace PalAssist.Core
         {
             if (msg != NativeMethods.WM_HOTKEY) return false;
 
-            int id = wParam.ToInt32();
-            if (_callbacks.TryGetValue(id, out var cb))
+            try
             {
-                cb.Invoke();
-                return true;
+                int id = wParam.ToInt32();
+                if (_callbacks.TryGetValue(id, out var cb))
+                {
+                    cb.Invoke();
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("HotkeyManager.ProcessMessage", ex.Message, ex);
             }
             return false;
         }

@@ -12,6 +12,8 @@ namespace PalAssist
         {
             base.OnStartup(e);
 
+            AppLog.Info("App", "PalAssist 2 starting v" + UpdateService.GetCurrentVersion());
+
             DispatcherUnhandledException += OnDispatcherUnhandledException;
             AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
             TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
@@ -19,16 +21,25 @@ namespace PalAssist
 
         protected override void OnExit(ExitEventArgs e)
         {
-            EmergencyRelease.ReleaseAll();
-            EmergencyRelease.SetCallback(null);
+            try
+            {
+                AppLog.Info("App", "Exiting — releasing keys");
+                EmergencyRelease.ReleaseAll();
+                EmergencyRelease.SetCallback(null);
+                EmergencyRelease.SetStateSnapshot(null);
+            }
+            catch
+            {
+                // ignore
+            }
             base.OnExit(e);
         }
 
         private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
         {
+            // Fatal for UI integrity: always release keys, log, then shut down cleanly.
             EmergencyRelease.LogCrash("DispatcherUnhandledException", e.Exception);
             EmergencyRelease.ReleaseAll();
-            // Mark handled so the process can exit without leaving keys stuck when possible.
             e.Handled = true;
             try
             {
@@ -48,6 +59,7 @@ namespace PalAssist
 
         private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
         {
+            // Recoverable by default: log, observe, release keys defensively, keep process if UI is fine.
             EmergencyRelease.LogCrash("TaskScheduler.UnobservedTaskException", e.Exception);
             EmergencyRelease.ReleaseAll();
             e.SetObserved();
