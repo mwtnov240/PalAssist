@@ -167,6 +167,53 @@ namespace PalAssist.Core
                 return false;
             }
         }
+
+        /// <summary>Directory containing config.json.</summary>
+        public string ConfigDirectory =>
+            Path.GetDirectoryName(ConfigPath) ?? AppDomain.CurrentDomain.BaseDirectory;
+
+        /// <summary>Export current in-memory config to a file path.</summary>
+        public bool ExportTo(string path)
+        {
+            try
+            {
+                string json = JsonSerializer.Serialize(Config, JsonOptions);
+                File.WriteAllText(path, json);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Load config from an external file into memory and save as active config.
+        /// Returns false if the file is missing, unreadable, or invalid.
+        /// </summary>
+        public bool ImportFrom(string path)
+        {
+            try
+            {
+                if (!File.Exists(path)) return false;
+                string json = File.ReadAllText(path);
+                var imported = JsonSerializer.Deserialize<AppConfig>(json, JsonOptions);
+                if (imported == null) return false;
+                Config = imported;
+                return Save();
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>Replace config with defaults and persist.</summary>
+        public bool ResetToDefaults()
+        {
+            Config = new AppConfig();
+            return Save();
+        }
     }
 
     /// <summary>
@@ -318,6 +365,14 @@ namespace PalAssist.Core
         /// </summary>
         [JsonPropertyName("beta_smartWorkAssist")]
         public bool BetaSmartWorkAssist { get; set; } = false;
+
+        // ── AFK safety ──
+        /// <summary>
+        /// When true, disable all assists if Palworld stays closed for 10 minutes.
+        /// Default on for new installs.
+        /// </summary>
+        [JsonPropertyName("afk_safety_enabled")]
+        public bool AfkSafetyEnabled { get; set; } = true;
     }
 
     /// <summary>

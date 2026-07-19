@@ -41,7 +41,7 @@
         <!-- ═══════════════════════════════════════════
              MAIN MENU CARD (tabbed)
              ═══════════════════════════════════════════ -->
-        <Border x:Name="MenuPanel" Width="500"
+        <Border x:Name="MenuPanel" Width="560"
                 CornerRadius="16" Padding="0"
                 Visibility="Collapsed"
                 MouseLeftButtonDown="MenuPanel_MouseLeftButtonDown"
@@ -133,39 +133,36 @@
                     </Grid>
                 </Border>
 
-                <!-- ── Tabs Row ── -->
-                <Border Padding="4,0">
-                    <Border.Background>
-                        <SolidColorBrush Color="#0F3460" Opacity="0.3"/>
-                    </Border.Background>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                        <Button x:Name="TabAssists" Content="Assists"
-                                Style="{StaticResource TabBtnStyle}"
-                                Click="TabAssists_Click"/>
-                        <Button x:Name="TabBeta" Content="Beta"
-                                Style="{StaticResource TabBtnStyle}"
-                                Visibility="Collapsed"
-                                Click="TabBeta_Click"/>
-                        <Button x:Name="TabSettings" Content="Settings"
-                                Style="{StaticResource TabBtnStyle}"
-                                Click="TabSettings_Click"/>
-                        <Button x:Name="TabChangelog" Content="What's Changed"
-                                Style="{StaticResource TabBtnStyle}"
-                                Click="TabChangelog_Click"/>
-                    </StackPanel>
-                </Border>
+                <!-- ── Body: vertical tabs + content ── -->
+                <Grid MinHeight="480">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="118"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-                <!-- ── Divider ── -->
-                <Rectangle Height="1" Margin="16,0">
-                    <Rectangle.Fill>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                            <GradientStop Color="Transparent" Offset="0"/>
-                            <GradientStop Color="#00D2FF" Offset="0.5"/>
-                            <GradientStop Color="Transparent" Offset="1"/>
-                        </LinearGradientBrush>
-                    </Rectangle.Fill>
-                </Rectangle>
+                    <!-- Left rail -->
+                    <Border Grid.Column="0" Background="#0F3460" Opacity="0.35"
+                            CornerRadius="0" Padding="0,8,0,8">
+                        <StackPanel>
+                            <Button x:Name="TabAssists" Content="Assists"
+                                    Style="{StaticResource VerticalTabBtnStyle}"
+                                    Click="TabAssists_Click"/>
+                            <Button x:Name="TabBeta" Content="Beta"
+                                    Style="{StaticResource VerticalTabBtnStyle}"
+                                    Visibility="Collapsed"
+                                    Click="TabBeta_Click"/>
+                            <Button x:Name="TabSettings" Content="Settings"
+                                    Style="{StaticResource VerticalTabBtnStyle}"
+                                    Click="TabSettings_Click"/>
+                            <Button x:Name="TabChangelog" Content="Changes"
+                                    Style="{StaticResource VerticalTabBtnStyle}"
+                                    ToolTip="What's Changed — full version history"
+                                    Click="TabChangelog_Click"/>
+                        </StackPanel>
+                    </Border>
 
+                    <!-- Right content -->
+                    <Grid Grid.Column="1">
                 <!-- ════════════════════════════════════════
                      TAB CONTENT: Assists
                      ════════════════════════════════════════ -->
@@ -190,9 +187,22 @@
                                         <TextBlock Text="Work Assist"
                                                    FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        <Border Style="{StaticResource HelpHintStyle}">
+                                            <Border.ToolTip>
+                                                <ToolTip MaxWidth="300">
+                                                    <TextBlock TextWrapping="Wrap" FontFamily="Segoe UI" FontSize="12">
+                                                        <Run FontWeight="SemiBold" Text="What: "/><Run Text="Holds F for work / interact.&#x0a;"/>
+                                                        <Run FontWeight="SemiBold" Text="When: "/><Run Text="Crafting stations, farms, and long hold-to-work actions so you don’t hold F yourself."/>
+                                                    </TextBlock>
+                                                </ToolTip>
+                                            </Border.ToolTip>
+                                            <TextBlock Text="?" FontSize="10" FontWeight="Bold"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
                                     </StackPanel>
                                     <TextBlock x:Name="WorkAssistSubtitle"
-                                               Text="Continuously holds the F key  ·  Hotkey: F1"
+                                               Text="Holds F  ·  Hotkey: F1"
                                                FontFamily="Segoe UI" FontSize="10"
                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                Margin="17,3,0,0"/>
@@ -233,8 +243,21 @@
                                         <TextBlock Text="Focus Lock"
                                                    FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        <Border Style="{StaticResource HelpHintStyle}">
+                                            <Border.ToolTip>
+                                                <ToolTip MaxWidth="300">
+                                                    <TextBlock TextWrapping="Wrap" FontFamily="Segoe UI" FontSize="12">
+                                                        <Run FontWeight="SemiBold" Text="What: "/><Run Text="Releases held assist keys when Palworld is not focused.&#x0a;"/>
+                                                        <Run FontWeight="SemiBold" Text="When: "/><Run Text="Alt-tabbing, opening the menu, or AFK with another app in front so keys don’t stick."/>
+                                                    </TextBlock>
+                                                </ToolTip>
+                                            </Border.ToolTip>
+                                            <TextBlock Text="?" FontSize="10" FontWeight="Bold"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
                                     </StackPanel>
-                                    <TextBlock Text="Release held keys when Palworld is not focused"
+                                    <TextBlock Text="Release keys when game unfocused"
                                                FontFamily="Segoe UI" FontSize="10"
                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                Margin="17,3,0,0"/>
@@ -243,8 +266,7 @@
                                               Style="{StaticResource ToggleSwitchStyle}"
                                               VerticalAlignment="Center"
                                               Checked="FocusLockToggle_Changed"
-                                              Unchecked="FocusLockToggle_Changed"
-                                              ToolTip="When on, held keys release on alt-tab and resume when you return to the game"/>
+                                              Unchecked="FocusLockToggle_Changed"/>
                             </Grid>
                             <StackPanel Orientation="Horizontal" Margin="17,0,0,0">
                                 <Ellipse x:Name="FocusLockStatusDot" Width="8" Height="8" Margin="0,0,6,0"
@@ -361,10 +383,25 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0">
-                                    <TextBlock Text="Crosshair"
-                                               FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="Fixed center reticle over the game"
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Crosshair"
+                                                   FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        <Border Style="{StaticResource HelpHintStyle}">
+                                            <Border.ToolTip>
+                                                <ToolTip MaxWidth="300">
+                                                    <TextBlock TextWrapping="Wrap" FontFamily="Segoe UI" FontSize="12">
+                                                        <Run FontWeight="SemiBold" Text="What: "/><Run Text="Draws a simple reticle over the game.&#x0a;"/>
+                                                        <Run FontWeight="SemiBold" Text="When: "/><Run Text="You want an extra aim marker without changing game settings."/>
+                                                    </TextBlock>
+                                                </ToolTip>
+                                            </Border.ToolTip>
+                                            <TextBlock Text="?" FontSize="10" FontWeight="Bold"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Text="Fixed center reticle"
                                                FontFamily="Segoe UI" FontSize="10"
                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                Margin="0,3,0,0"/>
@@ -436,6 +473,46 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
+
+                    <!-- Stop all assists -->
+                    <Border Margin="14,0,14,10" Padding="12,10" CornerRadius="10">
+                        <Border.Background>
+                            <SolidColorBrush Color="#1A1A2E" Opacity="0.55"/>
+                        </Border.Background>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Emergency stop"
+                                               FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <Border Style="{StaticResource HelpHintStyle}">
+                                        <Border.ToolTip>
+                                            <ToolTip MaxWidth="300">
+                                                <TextBlock TextWrapping="Wrap" FontFamily="Segoe UI" FontSize="12">
+                                                    <Run FontWeight="SemiBold" Text="What: "/><Run Text="Turns off all assists and releases held keys immediately.&#x0a;"/>
+                                                    <Run FontWeight="SemiBold" Text="When: "/><Run Text="Keys feel stuck or you need a hard stop without closing PalAssist."/>
+                                                </TextBlock>
+                                            </ToolTip>
+                                        </Border.ToolTip>
+                                        <TextBlock Text="?" FontSize="10" FontWeight="Bold"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </StackPanel>
+                                <TextBlock Text="Disable assists + release keys"
+                                           FontFamily="Segoe UI" FontSize="10"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Stop all"
+                                    Style="{StaticResource RebindBtnStyle}"
+                                    Click="StopAllAssistsBtn_Click"
+                                    VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
                 </StackPanel>
 
                 <!-- ════════════════════════════════════════
@@ -465,9 +542,24 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="Smart Work Assist" FontFamily="Segoe UI" FontSize="13"
-                                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="When Work Assist turns on: tap F once, wait 1s, then hold — picks up items on workstations first"
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Smart Work Assist" FontFamily="Segoe UI" FontSize="13"
+                                                   FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        <Border Style="{StaticResource HelpHintStyle}">
+                                            <Border.ToolTip>
+                                                <ToolTip MaxWidth="300">
+                                                    <TextBlock TextWrapping="Wrap" FontFamily="Segoe UI" FontSize="12">
+                                                        <Run FontWeight="SemiBold" Text="What: "/><Run Text="When Work Assist turns on: tap F once, wait 1s, then hold F.&#x0a;"/>
+                                                        <Run FontWeight="SemiBold" Text="When: "/><Run Text="An item is already sitting on a workstation — pick it up first, then work."/>
+                                                    </TextBlock>
+                                                </ToolTip>
+                                            </Border.ToolTip>
+                                            <TextBlock Text="?" FontSize="10" FontWeight="Bold"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Text="Tap F → wait 1s → hold (pickup first)"
                                                FontFamily="Segoe UI" FontSize="11"
                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                TextWrapping="Wrap" Margin="0,2,8,0"/>
@@ -478,9 +570,6 @@
                                               Checked="BetaSmartWorkAssistToggle_Changed"
                                               Unchecked="BetaSmartWorkAssistToggle_Changed"/>
                             </Grid>
-                            <TextBlock Text="Does not change how you turn Work Assist on/off — only the start sequence when this is enabled."
-                                       FontFamily="Segoe UI" FontSize="10"
-                                       Foreground="#FFB74D" Margin="0,8,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -741,6 +830,90 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- ── Safety ── -->
+                    <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
+                        <Border.Background>
+                            <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
+                        </Border.Background>
+                        <StackPanel>
+                            <TextBlock Text="Safety" FontFamily="Segoe UI" FontSize="13"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
+                                       Margin="0,0,0,8"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="AFK safety" FontFamily="Segoe UI" FontSize="12"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                        <Border Style="{StaticResource HelpHintStyle}">
+                                            <Border.ToolTip>
+                                                <ToolTip MaxWidth="300">
+                                                    <TextBlock TextWrapping="Wrap" FontFamily="Segoe UI" FontSize="12">
+                                                        <Run FontWeight="SemiBold" Text="What: "/><Run Text="Turns off all assists if Palworld stays closed for 10 minutes.&#x0a;"/>
+                                                        <Run FontWeight="SemiBold" Text="When: "/><Run Text="Leave PalAssist running overnight or after closing the game so keys don’t stay held."/>
+                                                    </TextBlock>
+                                                </ToolTip>
+                                            </Border.ToolTip>
+                                            <TextBlock Text="?" FontSize="10" FontWeight="Bold"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Text="Auto-stop assists if game closed 10+ min"
+                                               FontFamily="Segoe UI" FontSize="10"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <ToggleButton x:Name="AfkSafetyToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              VerticalAlignment="Center"
+                                              Checked="AfkSafetyToggle_Changed"
+                                              Unchecked="AfkSafetyToggle_Changed"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ── Config Manager ── -->
+                    <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
+                        <Border.Background>
+                            <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
+                        </Border.Background>
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="Config" FontFamily="Segoe UI" FontSize="13"
+                                           FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <Border Style="{StaticResource HelpHintStyle}">
+                                    <Border.ToolTip>
+                                        <ToolTip MaxWidth="300">
+                                            <TextBlock TextWrapping="Wrap" FontFamily="Segoe UI" FontSize="12"
+                                                       Text="Backup or restore config.json, open the settings folder, or reset everything to defaults."/>
+                                        </ToolTip>
+                                    </Border.ToolTip>
+                                    <TextBlock Text="?" FontSize="10" FontWeight="Bold"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </StackPanel>
+                            <TextBlock x:Name="ConfigStatusText" Text=""
+                                       FontFamily="Segoe UI" FontSize="10"
+                                       Foreground="{DynamicResource AccentCyanBrush}"
+                                       TextWrapping="Wrap" Margin="0,0,0,8"/>
+                            <WrapPanel>
+                                <Button Content="Open folder" Style="{StaticResource RebindBtnStyle}"
+                                        Margin="0,0,8,6" Click="ConfigOpenFolderBtn_Click"/>
+                                <Button Content="Export…" Style="{StaticResource RebindBtnStyle}"
+                                        Margin="0,0,8,6" Click="ConfigExportBtn_Click"/>
+                                <Button Content="Import…" Style="{StaticResource RebindBtnStyle}"
+                                        Margin="0,0,8,6" Click="ConfigImportBtn_Click"/>
+                                <Button Content="Reset defaults" Style="{StaticResource RebindBtnStyle}"
+                                        Margin="0,0,0,6" Click="ConfigResetBtn_Click"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
                     <!-- ── Experimental / Beta ── -->
                     <Border Margin="14,2,14,6" Padding="14,10" CornerRadius="10">
                         <Border.Background>
@@ -756,9 +929,24 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0">
-                                    <TextBlock Text="Enable Beta" FontFamily="Segoe UI" FontSize="12"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                    <TextBlock Text="Unlocks Smart Work Assist on the Beta tab"
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Enable Beta" FontFamily="Segoe UI" FontSize="12"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                        <Border Style="{StaticResource HelpHintStyle}">
+                                            <Border.ToolTip>
+                                                <ToolTip MaxWidth="300">
+                                                    <TextBlock TextWrapping="Wrap" FontFamily="Segoe UI" FontSize="12">
+                                                        <Run FontWeight="SemiBold" Text="What: "/><Run Text="Unlocks the Beta tab.&#x0a;"/>
+                                                        <Run FontWeight="SemiBold" Text="When: "/><Run Text="You want experimental options like Smart Work Assist."/>
+                                                    </TextBlock>
+                                                </ToolTip>
+                                            </Border.ToolTip>
+                                            <TextBlock Text="?" FontSize="10" FontWeight="Bold"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Text="Unlocks Smart Work Assist on Beta"
                                                FontFamily="Segoe UI" FontSize="10"
                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                Margin="0,2,0,0"/>
@@ -854,6 +1042,8 @@
                         <StackPanel x:Name="ChangelogStack" Margin="0,0,0,10"/>
                     </StackPanel>
                 </ScrollViewer>
+                    </Grid><!-- end right content -->
+                </Grid><!-- end body grid -->
 
                 <!-- ── Footer ── -->
                 <Border CornerRadius="0,0,16,16" Padding="18,8">

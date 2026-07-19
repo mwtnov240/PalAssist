@@ -1,4 +1,4 @@
-# PalAssist V1.4
+# PalAssist V1.5
 
 A modern, external overlay & input-assist tool for **Palworld** on Windows.
 
@@ -80,10 +80,10 @@ Output: `PalAssist\bin\Release\net8.0-windows\PalAssist.exe`
 
 | Tab | Contents |
 |---|---|
-| **Assists** | Work Assist, Focus Lock, Crosshair (Sprint Assist hidden while disabled) |
+| **Assists** | Work Assist, Focus Lock, Crosshair, Emergency stop (Sprint hidden while disabled) |
 | **Beta** | Experimental (opt-in in Settings): Smart Work Assist only |
-| **Settings** | Hotkeys, HUD, Appearance, Sound, Tray, Experimental, About + auto-update |
-| **What's Changed** | Full version history (newest first, scrollable) |
+| **Settings** | Hotkeys, HUD, Appearance, Sound, Tray, Safety (AFK), Config Manager, Experimental, About |
+| **Changes** | Full version history (newest first, scrollable) |
 
 ### Focus Lock
 
@@ -110,7 +110,7 @@ Updates are never force-installed without your confirmation.
 
 ### Publishing a new update (for maintainers)
 
-1. **Bump version** in `PalAssist.csproj` (`Version` / `InformationalVersion`, e.g. `1.4.0`).
+1. **Bump version** in `PalAssist.csproj` (`Version` / `InformationalVersion`, e.g. `1.5.0`).
 2. **Update** `PalAssist/CHANGELOG.md` (## X.Y.Z section) — shown in-app after upgrades.
 3. **Publish** self-contained single-file (bundles .NET — users need no runtime):
 
@@ -218,7 +218,7 @@ All settings persist to `config.json`:
   "tray_enabled": true,
   "minimize_to_tray": true,
   "auto_check_updates": true,
-  "last_seen_version": "1.4.0"
+  "last_seen_version": "1.5.0"
 }
 ```
 
