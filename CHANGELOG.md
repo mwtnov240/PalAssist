@@ -1,5 +1,23 @@
 # PalAssist Changelog
 
+## 2.0.0
+
+**PalAssist 2 — stability & long-run hardening**
+
+- Rebranded as **PalAssist 2** (exe remains `PalAssist.exe` for seamless auto-update)
+- Flattened repository layout; professional README + `STRESS.md`
+- Application icon (Pal Sphere–inspired original mark)
+- Thread-safe feature state (lock around enable / suspend / release / tick)
+- Feature tick ~33 ms with full try/catch (no single failure kills the loop)
+- WindowTracker: safer events, less process spam when game is already found
+- UI marshalling uses `BeginInvoke` (avoids timer/UI deadlocks)
+- Hotkey rebind always restores `WS_EX_NOACTIVATE` (try/finally)
+- Rotating size-capped log `PalAssist2.log` with error budget
+- UpdateService: cancel on dispose, stage cleanup, more resilient apply script
+- Stronger `ForceReleaseCommonKeys` (double KeyUp)
+- Removed unused `ProfileWorkFeature`
+- **Guarantee:** no stuck keys after update install, unhandled exception (best-effort), game exit, or PalAssist exit
+
 ## 1.5.0
 
 - **Vertical tabs** — left nav rail for more content space

@@ -7,8 +7,9 @@ using PalAssist.Win32;
 namespace PalAssist.Core
 {
     /// <summary>
-    /// Locates the Palworld window and tracks bounds + focus with high accuracy.
-    /// Uses a WinEvent foreground hook plus a short poll fallback.
+    /// Locates the Palworld window and tracks bounds + focus.
+    /// WinEvent foreground hook + poll fallback. All public events may fire
+    /// off the UI thread — subscribers must marshal to the dispatcher.
     /// </summary>
     public sealed class WindowTracker : IDisposable
     {
@@ -22,43 +23,29 @@ namespace PalAssist.Core
         private uint _targetProcessId;
         private bool _disposed;
 
-        // Keep delegate alive so the native hook does not call a GC'd target.
         private readonly NativeMethods.WinEventDelegate _winEventProc;
         private IntPtr _winEventHook = IntPtr.Zero;
-
         private readonly uint _ownProcessId;
 
-        /// <summary>True when the game window has been found.</summary>
+        // When game is found, only re-hunt processes periodically
+        private DateTime _nextProcessHuntUtc = DateTime.MinValue;
+        private static readonly TimeSpan FoundHuntInterval = TimeSpan.FromSeconds(3);
+        private static readonly TimeSpan LostHuntInterval = TimeSpan.FromMilliseconds(100);
+
         public bool IsFound => _targetHwnd != IntPtr.Zero;
 
-        /// <summary>
-        /// True when the game is the effective foreground target:
-        /// found, not minimized, and foreground window is the game HWND or same PID.
-        /// PalAssist itself never counts as game-focused.
-        /// </summary>
         public bool IsFocused { get; private set; }
 
-        /// <summary>
-        /// Launch platform when known: "Steam", "Epic", "Xbox", or null if unknown / not found.
-        /// </summary>
         public string? Platform { get; private set; }
 
-        /// <summary>Current bounds of the game window.</summary>
         public NativeMethods.RECT Bounds { get; private set; }
 
-        /// <summary>Game process id when found; 0 otherwise.</summary>
         public uint TargetProcessId => _targetProcessId;
 
-        /// <summary>Raised when the window bounds change (move / resize).</summary>
         public event Action<NativeMethods.RECT>? BoundsChanged;
-
-        /// <summary>Raised when the game is found or lost.</summary>
         public event Action<bool>? GameDetected;
-
-        /// <summary>Raised when <see cref="IsFocused"/> changes.</summary>
         public event Action<bool>? FocusChanged;
 
-        /// <param name="pollMs">Backup poll interval (default 100 ms).</param>
         public WindowTracker(int pollMs = 100)
         {
             _ownProcessId = NativeMethods.GetCurrentProcessId();
@@ -82,19 +69,20 @@ namespace PalAssist.Core
                     0,
                     NativeMethods.WINEVENT_OUTOFCONTEXT);
             }
-            catch
+            catch (Exception ex)
             {
+                AppLog.Error("WindowTracker.Start", "WinEvent hook failed: " + ex.Message, ex);
                 _winEventHook = IntPtr.Zero;
             }
 
             _timer.Start();
-            // Immediate evaluate so UI is correct before first timer tick.
-            EvaluateFocus(raiseEvents: true);
+            try { EvaluateFocus(raiseEvents: true); }
+            catch (Exception ex) { AppLog.Error("WindowTracker.Start.Evaluate", ex.Message, ex); }
         }
 
         public void Stop()
         {
-            _timer.Stop();
+            try { _timer.Stop(); } catch { /* ignore */ }
             Unhook();
         }
 
@@ -113,14 +101,13 @@ namespace PalAssist.Core
             int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
         {
             if (_disposed) return;
-            // Only care about foreground changes; re-evaluate fully.
             try
             {
                 EvaluateFocus(raiseEvents: true);
             }
-            catch
+            catch (Exception ex)
             {
-                // Never throw out of a native callback.
+                AppLog.Error("WindowTracker.OnWinEvent", ex.Message, ex);
             }
         }
 
@@ -128,66 +115,77 @@ namespace PalAssist.Core
         {
             if (_disposed) return;
 
-            // Drop stale handle (game crashed / closed without clean exit)
-            if (_targetHwnd != IntPtr.Zero && !NativeMethods.IsWindow(_targetHwnd))
+            try
             {
-                ClearGameState();
-                GameDetected?.Invoke(false);
-            }
-
-            IntPtr hwnd = FindGameWindow();
-
-            // Game was lost
-            if (hwnd == IntPtr.Zero && _targetHwnd != IntPtr.Zero)
-            {
-                ClearGameState();
-                GameDetected?.Invoke(false);
-                EvaluateFocus(raiseEvents: true);
-                return;
-            }
-
-            // Game was found
-            if (hwnd != IntPtr.Zero && _targetHwnd == IntPtr.Zero)
-            {
-                _targetHwnd = hwnd;
-                NativeMethods.GetWindowThreadProcessId(hwnd, out _targetProcessId);
-                Platform = DetectPlatform(hwnd, _targetProcessId);
-                GameDetected?.Invoke(true);
-            }
-            else if (hwnd != IntPtr.Zero && hwnd != _targetHwnd)
-            {
-                // Window handle changed (restart / multi-instance)
-                _targetHwnd = hwnd;
-                NativeMethods.GetWindowThreadProcessId(hwnd, out _targetProcessId);
-                Platform = DetectPlatform(hwnd, _targetProcessId);
-            }
-
-            if (_targetHwnd != IntPtr.Zero)
-            {
-                if (NativeMethods.GetWindowRect(_targetHwnd, out var rect))
+                // Stale handle (game crashed)
+                if (_targetHwnd != IntPtr.Zero && !NativeMethods.IsWindow(_targetHwnd))
                 {
-                    if (rect.Left != Bounds.Left || rect.Top != Bounds.Top ||
-                        rect.Right != Bounds.Right || rect.Bottom != Bounds.Bottom)
+                    ClearGameState();
+                    SafeRaise(GameDetected, false);
+                }
+
+                bool needHunt = _targetHwnd == IntPtr.Zero
+                    || DateTime.UtcNow >= _nextProcessHuntUtc
+                    || (_targetHwnd != IntPtr.Zero && !NativeMethods.IsWindow(_targetHwnd));
+
+                if (needHunt)
+                {
+                    IntPtr hwnd = FindGameWindow();
+                    _nextProcessHuntUtc = DateTime.UtcNow +
+                        (hwnd != IntPtr.Zero ? FoundHuntInterval : LostHuntInterval);
+
+                    if (hwnd == IntPtr.Zero && _targetHwnd != IntPtr.Zero)
                     {
-                        Bounds = rect;
-                        BoundsChanged?.Invoke(rect);
+                        ClearGameState();
+                        SafeRaise(GameDetected, false);
+                        EvaluateFocus(raiseEvents: true);
+                        return;
+                    }
+
+                    if (hwnd != IntPtr.Zero && _targetHwnd == IntPtr.Zero)
+                    {
+                        _targetHwnd = hwnd;
+                        NativeMethods.GetWindowThreadProcessId(hwnd, out _targetProcessId);
+                        Platform = DetectPlatform(hwnd, _targetProcessId);
+                        SafeRaise(GameDetected, true);
+                    }
+                    else if (hwnd != IntPtr.Zero && hwnd != _targetHwnd)
+                    {
+                        _targetHwnd = hwnd;
+                        NativeMethods.GetWindowThreadProcessId(hwnd, out _targetProcessId);
+                        Platform = DetectPlatform(hwnd, _targetProcessId);
                     }
                 }
-            }
 
-            EvaluateFocus(raiseEvents: true);
+                if (_targetHwnd != IntPtr.Zero)
+                {
+                    if (NativeMethods.GetWindowRect(_targetHwnd, out var rect))
+                    {
+                        if (rect.Left != Bounds.Left || rect.Top != Bounds.Top ||
+                            rect.Right != Bounds.Right || rect.Bottom != Bounds.Bottom)
+                        {
+                            Bounds = rect;
+                            try { BoundsChanged?.Invoke(rect); }
+                            catch (Exception ex) { AppLog.Error("WindowTracker.BoundsChanged", ex.Message, ex); }
+                        }
+                    }
+                }
+
+                EvaluateFocus(raiseEvents: true);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("WindowTracker.OnTick", ex.Message, ex);
+            }
         }
 
-        /// <summary>
-        /// Computes whether Palworld is the effective active target and raises FocusChanged.
-        /// </summary>
         private void EvaluateFocus(bool raiseEvents)
         {
             bool focused = ComputeIsGameActive();
             if (focused == IsFocused) return;
             IsFocused = focused;
             if (raiseEvents)
-                FocusChanged?.Invoke(focused);
+                SafeRaise(FocusChanged, focused);
         }
 
         private bool ComputeIsGameActive()
@@ -202,7 +200,6 @@ namespace PalAssist.Core
             if (fg == IntPtr.Zero)
                 return false;
 
-            // Exact game window
             if (fg == _targetHwnd)
                 return true;
 
@@ -210,11 +207,9 @@ namespace PalAssist.Core
             if (fgPid == 0)
                 return false;
 
-            // Never treat our own process as "game focused"
             if (fgPid == _ownProcessId)
                 return false;
 
-            // Same process as game (child / companion windows)
             if (_targetProcessId != 0 && fgPid == _targetProcessId)
                 return true;
 
@@ -229,8 +224,15 @@ namespace PalAssist.Core
             if (IsFocused)
             {
                 IsFocused = false;
-                FocusChanged?.Invoke(false);
+                SafeRaise(FocusChanged, false);
             }
+        }
+
+        private static void SafeRaise(Action<bool>? handler, bool value)
+        {
+            if (handler == null) return;
+            try { handler.Invoke(value); }
+            catch (Exception ex) { AppLog.Error("WindowTracker.event", ex.Message, ex); }
         }
 
         private static IntPtr FindGameWindow()
@@ -268,28 +270,35 @@ namespace PalAssist.Core
             }
 
             IntPtr found = IntPtr.Zero;
-            NativeMethods.EnumWindows((hWnd, _) =>
+            try
             {
-                if (!NativeMethods.IsWindowVisible(hWnd)) return true;
-
-                var sb = new StringBuilder(256);
-                NativeMethods.GetWindowText(hWnd, sb, 256);
-                string title = sb.ToString();
-
-                if (!title.StartsWith("Palworld", StringComparison.OrdinalIgnoreCase))
-                    return true;
-
-                NativeMethods.GetWindowThreadProcessId(hWnd, out uint pid);
-                if (pid != 0 && IsKnownGameProcess(pid))
+                NativeMethods.EnumWindows((hWnd, _) =>
                 {
-                    found = hWnd;
-                    return false;
-                }
+                    if (!NativeMethods.IsWindowVisible(hWnd)) return true;
 
-                if (found == IntPtr.Zero)
-                    found = hWnd;
-                return true;
-            }, IntPtr.Zero);
+                    var sb = new StringBuilder(256);
+                    NativeMethods.GetWindowText(hWnd, sb, 256);
+                    string title = sb.ToString();
+
+                    if (!title.StartsWith("Palworld", StringComparison.OrdinalIgnoreCase))
+                        return true;
+
+                    NativeMethods.GetWindowThreadProcessId(hWnd, out uint pid);
+                    if (pid != 0 && IsKnownGameProcess(pid))
+                    {
+                        found = hWnd;
+                        return false;
+                    }
+
+                    if (found == IntPtr.Zero)
+                        found = hWnd;
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("WindowTracker.FindGameWindow", ex.Message, ex);
+            }
 
             return found;
         }
@@ -352,8 +361,7 @@ namespace PalAssist.Core
         {
             if (_disposed) return;
             _disposed = true;
-            _timer.Stop();
-            _timer.Dispose();
+            try { _timer.Stop(); _timer.Dispose(); } catch { /* ignore */ }
             Unhook();
         }
     }

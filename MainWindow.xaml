@@ -82,7 +82,7 @@
 
                         <!-- Title + subtitle -->
                         <StackPanel Grid.Column="0">
-                            <TextBlock Text="PalAssist"
+                            <TextBlock Text="PalAssist 2"
                                        FontFamily="Segoe UI" FontSize="20" FontWeight="Bold"
                                        Foreground="{DynamicResource AccentCyanBrush}"/>
                             <TextBlock x:Name="HeaderVersionText"
