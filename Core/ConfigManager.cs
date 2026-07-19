@@ -367,11 +367,17 @@ namespace PalAssist.Core
         public bool BetaSetupWizardCompleted { get; set; } = false;
 
         /// <summary>
-        /// When true (and Beta is unlocked), Work Assist taps F once, waits 1s, then holds
+        /// When true (and Beta is unlocked), Work Assist taps F once, waits, then holds
         /// so items on workstations are picked up first.
         /// </summary>
         [JsonPropertyName("beta_smartWorkAssist")]
         public bool BetaSmartWorkAssist { get; set; } = false;
+
+        /// <summary>
+        /// Smart Work wait after pickup tap, before continuous hold (0–1000 ms). Default 500.
+        /// </summary>
+        [JsonPropertyName("beta_smartWorkWaitMs")]
+        public int BetaSmartWorkWaitMs { get; set; } = 500;
 
         // ── AFK safety ──
         /// <summary>

@@ -549,7 +549,7 @@
                                             <Border.ToolTip>
                                                 <ToolTip MaxWidth="300">
                                                     <TextBlock TextWrapping="Wrap" FontFamily="Segoe UI" FontSize="12">
-                                                        <Run FontWeight="SemiBold" Text="What: "/><Run Text="When Work Assist turns on: tap F once, wait 1s, then hold F.&#x0a;"/>
+                                                        <Run FontWeight="SemiBold" Text="What: "/><Run Text="When Work Assist turns on: tap F once, wait (adjustable ms), then hold F.&#x0a;"/>
                                                         <Run FontWeight="SemiBold" Text="When: "/><Run Text="An item is already sitting on a workstation — pick it up first, then work."/>
                                                     </TextBlock>
                                                 </ToolTip>
@@ -559,7 +559,7 @@
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                     </StackPanel>
-                                    <TextBlock Text="Tap F → wait 1s → hold (pickup first)"
+                                    <TextBlock Text="Tap F → wait → hold (pickup first)"
                                                FontFamily="Segoe UI" FontSize="11"
                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                TextWrapping="Wrap" Margin="0,2,8,0"/>
@@ -570,6 +570,58 @@
                                               Checked="BetaSmartWorkAssistToggle_Changed"
                                               Unchecked="BetaSmartWorkAssistToggle_Changed"/>
                             </Grid>
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="Wait after tap"
+                                               FontFamily="Segoe UI" FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center"/>
+                                    <Border Style="{StaticResource HelpHintStyle}">
+                                        <Border.ToolTip>
+                                            <ToolTip MaxWidth="300">
+                                                <TextBlock TextWrapping="Wrap" FontFamily="Segoe UI" FontSize="12"
+                                                           Text="Milliseconds to wait after the pickup tap before holding F for work. 0–1000 (1000 = 1 second). Type a number and press Enter or leave the field."/>
+                                            </ToolTip>
+                                        </Border.ToolTip>
+                                        <TextBlock Text="?" FontSize="10" FontWeight="Bold"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBox x:Name="SmartWorkWaitMsBox"
+                                             Width="64" Height="26"
+                                             FontFamily="Segoe UI" FontSize="12"
+                                             Text="500"
+                                             TextAlignment="Center"
+                                             VerticalContentAlignment="Center"
+                                             Background="#1A1A2E"
+                                             Foreground="{DynamicResource TextPrimaryBrush}"
+                                             BorderBrush="#0F3460"
+                                             CaretBrush="{DynamicResource AccentCyanBrush}"
+                                             MaxLength="4"
+                                             Focusable="True"
+                                             IsTabStop="True"
+                                             IsReadOnly="False"
+                                             ToolTip="0–1000 milliseconds — click then type"
+                                             GotFocus="SmartWorkWaitMsBox_GotFocus"
+                                             LostFocus="SmartWorkWaitMsBox_LostFocus"
+                                             PreviewKeyDown="SmartWorkWaitMsBox_KeyDown"
+                                             KeyDown="SmartWorkWaitMsBox_KeyDown"/>
+                                    <TextBlock Text=" ms" FontFamily="Segoe UI" FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock x:Name="SmartWorkWaitHintText"
+                                       Text="500 ms after pickup tap (default)"
+                                       FontFamily="Segoe UI" FontSize="10"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Margin="0,6,0,0"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
