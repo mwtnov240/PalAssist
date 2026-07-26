@@ -1,5 +1,17 @@
 # PalAssist Changelog
 
+## 2.3.0
+
+**Stability hardening & backend efficiency (no new assists)**
+
+- **Single instance:** second launch activates the existing app (shows menu) instead of stacking processes
+- **Adaptive feature tick:** ~30 Hz timer runs only while an assist is active — stopped when idle
+- **Adaptive WindowTracker poll:** slower when idle/menu closed; full rate when assists or menu need it
+- **Overlay:** reset to primary work area when Palworld is gone so the menu cannot stick off-screen
+- **Config:** invalid saved menu/HUD coordinates are discarded and re-centered
+- **Diagnostics:** startup log (PID, screens), optional 30‑minute assist heartbeat
+- Active Hold remains beta (unchanged semantics)
+
 ## 2.2.1
 
 - **Removed Sprint Assist** (feature, UI, hotkey, config, and related input code)

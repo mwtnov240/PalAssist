@@ -98,6 +98,11 @@ namespace PalAssist
         private bool _afkSafetyFired;
         private const double AfkSafetyMinutes = 10.0;
 
+        // ── V2.3 session diagnostics ──
+        private DateTime _lastHeartbeatUtc = DateTime.MinValue;
+        private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromMinutes(30);
+        private bool _overlayOnWorkArea;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -181,7 +186,7 @@ namespace PalAssist
 
             this.SizeChanged += (_, _) => { PositionHud(); PositionCrosshair(); ClampMenuToCanvas(); };
 
-            // ── UI timer: AFK safety + Active Hold status ──
+            // ── UI timer: AFK safety + Active Hold status + heartbeat + poll rate ──
             _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
             _uiTimer.Tick += (_, _) =>
             {
@@ -189,6 +194,9 @@ namespace PalAssist
                 {
                     TickAfkSafety();
                     UpdateActiveHoldStatusText();
+                    TickSessionHeartbeat();
+                    UpdateTrackerPollRate();
+                    MaybeResetOverlayWhenGameMissing();
                 }
                 catch (Exception ex)
                 {
@@ -196,6 +204,12 @@ namespace PalAssist
                 }
             };
             _uiTimer.Start();
+
+            // Second-instance activation (show menu / restore from tray)
+            if (Application.Current is App app && app.SingleInstance != null)
+            {
+                app.SingleInstance.Activated += () => UiPost(ActivateFromSecondaryLaunch);
+            }
 
             // ── Focus Lock (stable) ──
             _focusResumeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
@@ -260,8 +274,8 @@ namespace PalAssist
             PositionHud();
             PositionCrosshair();
 
-            // Restore menu position if saved, otherwise centre it — always clamp after layout
-            // so a large menu_x from a previous monitor/resolution cannot hide the card.
+            // Restore menu position if saved and sane; otherwise centre after layout.
+            SanitizeLayoutConfig(cfg);
             if (!double.IsNaN(cfg.MenuX) && !double.IsNaN(cfg.MenuY))
             {
                 Canvas.SetLeft(MenuPanel, cfg.MenuX);
@@ -484,6 +498,113 @@ namespace PalAssist
                 {
                     ClampMenuToCanvas();
                 }
+            }
+            UpdateTrackerPollRate();
+        }
+
+        /// <summary>Called when a second PalAssist process signals us to come forward.</summary>
+        private void ActivateFromSecondaryLaunch()
+        {
+            try
+            {
+                ShowInTaskbar = true;
+                if (WindowState == WindowState.Minimized)
+                    WindowState = WindowState.Normal;
+                SetMenuVisible(true);
+                ClampMenuToCanvas();
+                AppLog.Info("MainWindow", "Activated by secondary launch signal");
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("MainWindow.ActivateFromSecondary", ex.Message, ex);
+            }
+        }
+
+        /// <summary>Slow WindowTracker when fully idle; full rate when menu open or assists on.</summary>
+        private void UpdateTrackerPollRate()
+        {
+            if (_windowTracker == null) return;
+            bool busy = _menuVisible
+                        || (_workAssist?.IsEnabled == true)
+                        || (_featureManager?.IsTickRunning == true);
+            // 100 ms responsive · 400 ms idle (WinEvent still handles focus)
+            _windowTracker.SetPollIntervalMs(busy ? 100 : 400);
+        }
+
+        private void TickSessionHeartbeat()
+        {
+            bool any = _workAssist?.IsEnabled == true;
+            if (!any) return;
+            var now = DateTime.UtcNow;
+            if (_lastHeartbeatUtc != DateTime.MinValue && now - _lastHeartbeatUtc < HeartbeatInterval)
+                return;
+            _lastHeartbeatUtc = now;
+            AppLog.Info("Heartbeat",
+                $"work={_workAssist?.IsEnabled == true}"
+                + $" bg={_workAssist?.IsBackgroundHold == true}"
+                + $" found={_windowTracker?.IsFound == true}"
+                + $" focused={_windowTracker?.IsFocused == true}"
+                + $" tick={_featureManager?.IsTickRunning == true}"
+                + $" focusLock={_configManager?.Config.FocusLockEnabled == true}");
+        }
+
+        /// <summary>
+        /// Drop absurd menu/HUD coords (e.g. multi-monitor teardown) so we re-center.
+        /// </summary>
+        private static void SanitizeLayoutConfig(AppConfig cfg)
+        {
+            double maxX = SystemParameters.VirtualScreenWidth + 100;
+            double maxY = SystemParameters.VirtualScreenHeight + 100;
+            if (!double.IsNaN(cfg.MenuX) && (cfg.MenuX < -100 || cfg.MenuX > maxX || cfg.MenuY < -100 || cfg.MenuY > maxY))
+            {
+                cfg.MenuX = double.NaN;
+                cfg.MenuY = double.NaN;
+            }
+            if (!double.IsNaN(cfg.HudX) && (cfg.HudX < -100 || cfg.HudX > maxX || cfg.HudY < -100 || cfg.HudY > maxY))
+            {
+                cfg.HudX = double.NaN;
+                cfg.HudY = double.NaN;
+            }
+        }
+
+        /// <summary>
+        /// When Palworld is gone for a few seconds, pin the overlay to the primary work area
+        /// so Insert still shows a visible menu (avoids stuck tiny/off-screen game rects).
+        /// </summary>
+        private void MaybeResetOverlayWhenGameMissing()
+        {
+            if (_windowTracker?.IsFound == true)
+            {
+                _overlayOnWorkArea = false;
+                return;
+            }
+
+            if (_gameMissingSinceUtc == null) return;
+            // Small delay so brief disconnects don't jump the UI
+            if ((DateTime.UtcNow - _gameMissingSinceUtc.Value).TotalSeconds < 2.0) return;
+            if (_overlayOnWorkArea) return;
+
+            ResetOverlayToWorkArea();
+            _overlayOnWorkArea = true;
+        }
+
+        private void ResetOverlayToWorkArea()
+        {
+            try
+            {
+                var wa = SystemParameters.WorkArea;
+                Left = wa.Left;
+                Top = wa.Top;
+                Width = Math.Max(320, wa.Width);
+                Height = Math.Max(240, wa.Height);
+                ClampMenuToCanvas();
+                PositionHud();
+                PositionCrosshair();
+                AppLog.Info("MainWindow", "Overlay reset to primary work area (game not found)");
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("MainWindow.ResetOverlayToWorkArea", ex.Message, ex);
             }
         }
 
@@ -739,6 +860,7 @@ namespace PalAssist
             this.Top    = rect.Top;
             this.Width  = w;
             this.Height = h;
+            _overlayOnWorkArea = false;
             PositionCrosshair();
             ClampMenuToCanvas();
             PositionHud();
@@ -764,6 +886,7 @@ namespace PalAssist
 
             _gameMissingSinceUtc = null;
             _afkSafetyFired = false;
+            _overlayOnWorkArea = false;
 
             string? platform = _windowTracker?.Platform;
             GameStatusText.Text = string.IsNullOrEmpty(platform)

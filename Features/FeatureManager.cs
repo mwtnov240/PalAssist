@@ -9,7 +9,9 @@ namespace PalAssist.Features
     /// <summary>
     /// Central registry for assist features. Owns enable/suspend/tick/release serialization
     /// so Focus Lock, AFK, emergency stop, and the tick loop cannot race held keys.
-    /// Supports selective suspend: Active Hold can keep Work Assist ticking while Focus Lock suspends other assists.
+    ///
+    /// V2.3: tick timer runs only while at least one feature is enabled and not fully
+    /// suspended (or Work Assist is in Active Hold background mode).
     /// </summary>
     public sealed class FeatureManager : IDisposable
     {
@@ -18,6 +20,7 @@ namespace PalAssist.Features
         private readonly object _gate = new();
         private bool _disposed;
         private bool _inputSuspended;
+        private bool _tickRunning;
 
         /// <summary>Read-only view of all registered features.</summary>
         public IReadOnlyList<IFeature> Features => _features;
@@ -31,15 +34,22 @@ namespace PalAssist.Features
             get { lock (_gate) return _inputSuspended; }
         }
 
+        /// <summary>True when the ~30 Hz tick timer is currently running.</summary>
+        public bool IsTickRunning
+        {
+            get { lock (_gate) return _tickRunning; }
+        }
+
         /// <summary>Raised whenever any feature's enabled state changes (may fire off UI thread).</summary>
         public event Action? StateChanged;
 
         public FeatureManager()
         {
-            // ~30 Hz: enough for hold re-assert without 60 Hz CPU cost on multi-day runs
+            // ~30 Hz when active: enough for hold re-assert without 60 Hz CPU cost
             _tickTimer = new System.Timers.Timer(33);
             _tickTimer.Elapsed += OnTick;
             _tickTimer.AutoReset = true;
+            // Do not start until an assist is enabled (adaptive tick)
         }
 
         public void Register(IFeature feature)
@@ -48,19 +58,33 @@ namespace PalAssist.Features
                 _features.Add(feature);
         }
 
+        /// <summary>
+        /// Idempotent: ensures tick is running if any feature needs it.
+        /// Safe to call at startup after registering features.
+        /// </summary>
         public void Start()
         {
             lock (_gate)
             {
                 if (_disposed) return;
-                _tickTimer.Start();
+                SyncTickTimer_NoLock();
             }
         }
 
         public void Stop()
         {
-            try { _tickTimer.Stop(); }
-            catch (Exception ex) { AppLog.Error("FeatureManager.Stop", ex.Message, ex); }
+            lock (_gate)
+            {
+                try
+                {
+                    if (_tickRunning)
+                    {
+                        _tickTimer.Stop();
+                        _tickRunning = false;
+                    }
+                }
+                catch (Exception ex) { AppLog.Error("FeatureManager.Stop", ex.Message, ex); }
+            }
         }
 
         public void Toggle(IFeature feature)
@@ -81,12 +105,14 @@ namespace PalAssist.Features
                         if (_inputSuspended)
                             feature.SuspendInput();
                     }
+                    SyncTickTimer_NoLock();
                     raise = StateChanged;
                 }
                 catch (Exception ex)
                 {
                     AppLog.Error("FeatureManager.Toggle", ex.Message, ex);
                     try { ForceReleaseCommonKeys(); } catch { /* ignore */ }
+                    SyncTickTimer_NoLock();
                 }
             }
             SafeRaise(raise);
@@ -112,6 +138,7 @@ namespace PalAssist.Features
                         }
                     }
                     _inputSuspended = false;
+                    SyncTickTimer_NoLock();
                     raise = StateChanged;
                 }
                 catch (Exception ex)
@@ -145,6 +172,7 @@ namespace PalAssist.Features
                         }
                     }
                     _inputSuspended = false;
+                    SyncTickTimer_NoLock();
                 }
                 catch (Exception ex)
                 {
@@ -177,7 +205,6 @@ namespace PalAssist.Features
                         {
                             if (f is WorkAssistFeature wa && activeHoldWorkAssist)
                             {
-                                // Stay in background hold if already there (avoid interrupting work)
                                 if (wa.IsBackgroundHold)
                                     wa.UpdateBackgroundHwnd(gameHwnd);
                                 else
@@ -185,7 +212,6 @@ namespace PalAssist.Features
                             }
                             else if (f is WorkAssistFeature waNoHold)
                             {
-                                // Active Hold off: full suspend (exit background if needed)
                                 if (waNoHold.IsBackgroundHold || !waNoHold.IsInputSuspended)
                                     waNoHold.SuspendInput();
                             }
@@ -204,7 +230,6 @@ namespace PalAssist.Features
                 {
                     if (!_inputSuspended)
                     {
-                        // Still may need to leave Active Hold background when Focus Lock is off
                         foreach (var f in _features)
                         {
                             if (f is WorkAssistFeature wa && wa.IsEnabled && wa.IsBackgroundHold)
@@ -216,6 +241,7 @@ namespace PalAssist.Features
                                 }
                             }
                         }
+                        SyncTickTimer_NoLock();
                         return;
                     }
 
@@ -243,13 +269,11 @@ namespace PalAssist.Features
                         }
                     }
                 }
+
+                SyncTickTimer_NoLock();
             }
         }
 
-        /// <summary>
-        /// Keep Work Assist in (or enter) background hold without changing other feature suspend state.
-        /// Used when Active Hold is on, Focus Lock is off, and the game loses focus.
-        /// </summary>
         public void ApplyWorkAssistBackgroundHold(IntPtr gameHwnd)
         {
             lock (_gate)
@@ -272,13 +296,10 @@ namespace PalAssist.Features
                         }
                     }
                 }
+                SyncTickTimer_NoLock();
             }
         }
 
-        /// <summary>
-        /// If Work Assist is in background hold and the game is focused again (Focus Lock off path),
-        /// return to SendInput hold.
-        /// </summary>
         public void ApplyWorkAssistForegroundHold()
         {
             lock (_gate)
@@ -298,10 +319,10 @@ namespace PalAssist.Features
                         }
                     }
                 }
+                SyncTickTimer_NoLock();
             }
         }
 
-        /// <summary>Refresh background HWND or suspend Work Assist if the game vanished.</summary>
         public void UpdateWorkAssistBackgroundHwnd(IntPtr gameHwnd)
         {
             lock (_gate)
@@ -321,6 +342,46 @@ namespace PalAssist.Features
                         }
                     }
                 }
+                SyncTickTimer_NoLock();
+            }
+        }
+
+        /// <summary>True if any feature needs the update loop.</summary>
+        private bool NeedsTick_NoLock()
+        {
+            foreach (var f in _features)
+            {
+                if (!f.IsEnabled) continue;
+                // Active features that still process input (including Active Hold background)
+                if (!f.IsInputSuspended)
+                    return true;
+                // Work Assist background hold clears IsInputSuspended; covered above.
+            }
+            return false;
+        }
+
+        private void SyncTickTimer_NoLock()
+        {
+            if (_disposed) return;
+            bool need = NeedsTick_NoLock();
+            try
+            {
+                if (need && !_tickRunning)
+                {
+                    _tickTimer.Start();
+                    _tickRunning = true;
+                    AppLog.Info("FeatureManager", "Tick started (assist active)");
+                }
+                else if (!need && _tickRunning)
+                {
+                    _tickTimer.Stop();
+                    _tickRunning = false;
+                    AppLog.Info("FeatureManager", "Tick stopped (idle)");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("FeatureManager.SyncTickTimer", ex.Message, ex);
             }
         }
 
@@ -332,8 +393,17 @@ namespace PalAssist.Features
                 {
                     if (_disposed) return;
 
-                    // Tick per-feature: Work Assist may still run under Active Hold while
-                    // Focus Lock has suspended other assists.
+                    // Safety: if nothing needs work, stop (race with disable)
+                    if (!NeedsTick_NoLock())
+                    {
+                        if (_tickRunning)
+                        {
+                            try { _tickTimer.Stop(); } catch { /* ignore */ }
+                            _tickRunning = false;
+                        }
+                        return;
+                    }
+
                     foreach (var f in _features)
                     {
                         try
@@ -359,7 +429,6 @@ namespace PalAssist.Features
         {
             try
             {
-                // Twice: some games miss a single synthetic KeyUp under load
                 for (int i = 0; i < 2; i++)
                 {
                     InputSimulator.KeyUp(NativeMethods.VK_F, NativeMethods.SCAN_F);
@@ -390,6 +459,7 @@ namespace PalAssist.Features
             {
                 _tickTimer.Stop();
                 _tickTimer.Dispose();
+                _tickRunning = false;
             }
             catch (Exception ex)
             {
