@@ -89,6 +89,25 @@ namespace PalAssist.Core
             Unhook();
         }
 
+        /// <summary>
+        /// Adaptive poll rate (V2.3). Keep ~100 ms when menu/assists need responsiveness;
+        /// use 250–500 ms when idle to cut wakeups. WinEvent still handles focus instantly.
+        /// </summary>
+        public void SetPollIntervalMs(int pollMs)
+        {
+            pollMs = Math.Clamp(pollMs, 50, 2000);
+            try
+            {
+                if (Math.Abs(_timer.Interval - pollMs) < 1)
+                    return;
+                _timer.Interval = pollMs;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("WindowTracker.SetPollIntervalMs", ex.Message, ex);
+            }
+        }
+
         private void Unhook()
         {
             if (_winEventHook != IntPtr.Zero)

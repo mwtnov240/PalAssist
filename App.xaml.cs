@@ -8,11 +8,30 @@ namespace PalAssist
 {
     public partial class App : System.Windows.Application
     {
+        private SingleInstance? _singleInstance;
+
+        /// <summary>Primary-instance guard; null when this process is a secondary launch.</summary>
+        internal SingleInstance? SingleInstance => _singleInstance;
+
         protected override void OnStartup(StartupEventArgs e)
         {
+            // Single instance BEFORE MainWindow (StartupUri) loads.
+            _singleInstance = new SingleInstance();
+            if (!_singleInstance.TryAcquire())
+            {
+                SingleInstance.SignalActivate();
+                try { _singleInstance.Dispose(); } catch { /* ignore */ }
+                _singleInstance = null;
+                // Do not call base.OnStartup — avoids creating a second MainWindow.
+                Shutdown(0);
+                return;
+            }
+
             base.OnStartup(e);
 
-            AppLog.Info("App", "PalAssist 2 starting v" + UpdateService.GetCurrentVersion());
+            AppLog.Info("App", "PalAssist 2 starting v" + UpdateService.GetCurrentVersion()
+                + " pid=" + Environment.ProcessId
+                + " screens=" + System.Windows.Forms.Screen.AllScreens.Length);
 
             DispatcherUnhandledException += OnDispatcherUnhandledException;
             AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
@@ -32,6 +51,10 @@ namespace PalAssist
             {
                 // ignore
             }
+
+            try { _singleInstance?.Dispose(); } catch { /* ignore */ }
+            _singleInstance = null;
+
             base.OnExit(e);
         }
 
