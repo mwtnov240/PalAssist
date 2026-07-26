@@ -1,5 +1,17 @@
 # PalAssist Changelog
 
+## 2.2.1
+
+- **Removed Sprint Assist** (feature, UI, hotkey, config, and related input code)
+- App is Work Assist–focused: Focus Lock, Active Hold, and Smart Work unchanged
+- **Menu visibility fix:** keep the menu card on-screen when the overlay resizes to the game window (saved position can no longer sit fully off the right edge)
+
+## 2.2.0
+
+- **Active Hold** (Beta): keep Work Assist holding F while Palworld is in the background
+- F is targeted at the game window only so other apps are not interrupted
+- Overrides Focus Lock for Work Assist only
+
 ## 2.1.0
 
 - **Smart Work Assist:** adjustable wait after pickup tap — type **0–1000 ms** (default **500 ms**)

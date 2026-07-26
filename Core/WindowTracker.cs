@@ -40,6 +40,9 @@ namespace PalAssist.Core
 
         public NativeMethods.RECT Bounds { get; private set; }
 
+        /// <summary>Palworld main window handle, or zero if not found.</summary>
+        public IntPtr TargetHwnd => _targetHwnd;
+
         public uint TargetProcessId => _targetProcessId;
 
         public event Action<NativeMethods.RECT>? BoundsChanged;

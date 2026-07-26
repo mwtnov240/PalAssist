@@ -164,8 +164,37 @@ namespace PalAssist.Win32
         // Virtual-key codes we care about
         public const uint VK_INSERT  = 0x2D;
         public const uint VK_F1      = 0x70;
-        public const uint VK_F2      = 0x71;
         public const uint VK_CONTROL = 0x11;
+
+        // ───────────────────────────────────────────────
+        //  Window-targeted keyboard messages (background hold)
+        // ───────────────────────────────────────────────
+
+        public const uint WM_KEYDOWN = 0x0100;
+        public const uint WM_KEYUP   = 0x0101;
+        public const uint WM_CHAR    = 0x0102;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        /// <summary>
+        /// Build lParam for WM_KEYDOWN/WM_KEYUP: bits 0-15 repeat, 16-23 scan,
+        /// 30 previous key state, 31 transition (1 = key up).
+        /// </summary>
+        public static IntPtr MakeKeyLParam(ushort scanCode, bool keyUp, bool previousDown = false, int repeatCount = 1)
+        {
+            uint lp = (uint)(repeatCount & 0xFFFF);
+            lp |= (uint)(scanCode & 0xFF) << 16;
+            if (previousDown || keyUp)
+                lp |= 1u << 30;
+            if (keyUp)
+                lp |= 1u << 31;
+            return new IntPtr(unchecked((int)lp));
+        }
 
         // ───────────────────────────────────────────────
         //  Input simulation (SendInput)
@@ -187,17 +216,9 @@ namespace PalAssist.Win32
         public const uint KEYEVENTF_SCANCODE  = 0x0008;
         public const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
 
-        // Virtual keys used for game input
-        public const ushort VK_W     = 0x57;
-        public const ushort VK_E     = 0x45;
-        public const ushort VK_F     = 0x46;
-        public const ushort VK_LSHIFT = 0xA0;
-
-        // Scan codes (US layout) — physical key positions
-        public const ushort SCAN_W     = 0x11;
-        public const ushort SCAN_E     = 0x12;
-        public const ushort SCAN_F     = 0x21;
-        public const ushort SCAN_SHIFT = 0x2A;  // Left Shift
+        // Virtual keys / scan codes used for game input (Work Assist holds F)
+        public const ushort VK_F   = 0x46;
+        public const ushort SCAN_F = 0x21;
 
         /// <summary>
         /// Full INPUT size on x64 must match the largest union arm (MOUSEINPUT).

@@ -278,99 +278,6 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- ── Sprint Assist (disabled in v1.1; kept in tree for re-enable) ── -->
-                    <Border x:Name="SprintAssistCard" Margin="14,2,14,10" Padding="14,12" CornerRadius="10"
-                            Visibility="Collapsed">
-                        <Border.Background>
-                            <SolidColorBrush Color="#1A1A2E" Opacity="0.7"/>
-                        </Border.Background>
-                        <StackPanel>
-                            <!-- Header row -->
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Ellipse x:Name="SprintDot" Width="9" Height="9"
-                                                 Fill="{DynamicResource AccentRedBrush}"
-                                                 Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Sprint Assist"
-                                                   FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    </StackPanel>
-                                    <TextBlock x:Name="SprintSubtitle"
-                                               Text="Auto forward + sprint cycles  ·  Hotkey: F2"
-                                               FontFamily="Segoe UI" FontSize="10"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Margin="17,3,0,0"/>
-                                </StackPanel>
-                                <ToggleButton x:Name="SprintToggle" Grid.Column="1"
-                                              Style="{StaticResource ToggleSwitchStyle}"
-                                              VerticalAlignment="Center"
-                                              Checked="SprintToggle_Changed"
-                                              Unchecked="SprintToggle_Changed"/>
-                            </Grid>
-
-                            <!-- Status line -->
-                            <TextBlock x:Name="SprintStatusText" Text="Idle"
-                                       FontFamily="Segoe UI" FontSize="11" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Margin="17,8,0,4"/>
-
-                            <!-- Sprint Duration slider -->
-                            <Grid Margin="17,2,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="38"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Sprint:" FontFamily="Segoe UI" FontSize="11"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <Slider x:Name="SprintDurSlider" Grid.Column="1"
-                                        Style="{StaticResource ModernSlider}"
-                                        Minimum="3" Maximum="20" Value="8"
-                                        TickFrequency="0.5" IsSnapToTickEnabled="True"
-                                        ValueChanged="SprintDurSlider_Changed"/>
-                                <TextBlock x:Name="SprintDurLabel" Grid.Column="2"
-                                           Text="8.0s" FontFamily="Segoe UI" FontSize="11"
-                                           Foreground="{DynamicResource AccentCyanBrush}"
-                                           VerticalAlignment="Center" HorizontalAlignment="Right"/>
-                            </Grid>
-
-                            <!-- Recovery Duration slider -->
-                            <Grid Margin="17,4,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="38"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Recovery:" FontFamily="Segoe UI" FontSize="11"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <Slider x:Name="RecoveryDurSlider" Grid.Column="1"
-                                        Style="{StaticResource ModernSlider}"
-                                        Minimum="2" Maximum="15" Value="4"
-                                        TickFrequency="0.5" IsSnapToTickEnabled="True"
-                                        ValueChanged="RecoveryDurSlider_Changed"/>
-                                <TextBlock x:Name="RecoveryDurLabel" Grid.Column="2"
-                                           Text="4.0s" FontFamily="Segoe UI" FontSize="11"
-                                           Foreground="{DynamicResource AccentCyanBrush}"
-                                           VerticalAlignment="Center" HorizontalAlignment="Right"/>
-                            </Grid>
-
-                            <!-- Pause when dodging checkbox -->
-                            <CheckBox x:Name="PauseDodgeCheck" Content="Pause when dodging (Ctrl)"
-                                      Foreground="{DynamicResource TextSecondaryBrush}"
-                                      FontFamily="Segoe UI" FontSize="11"
-                                      Margin="17,6,0,0"
-                                      Checked="PauseDodgeCheck_Changed"
-                                      Unchecked="PauseDodgeCheck_Changed"/>
-                        </StackPanel>
-                    </Border>
-
                     <!-- ── Crosshair ── -->
                     <Border Margin="14,2,14,10" Padding="14,12" CornerRadius="10">
                         <Border.Background>
@@ -624,6 +531,55 @@
                                        Margin="0,6,0,0"/>
                         </StackPanel>
                     </Border>
+
+                    <!-- Active Hold -->
+                    <Border Margin="14,2,14,10" Padding="14,10" CornerRadius="10">
+                        <Border.Background>
+                            <SolidColorBrush Color="#1A1A2E" Opacity="0.6"/>
+                        </Border.Background>
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Active Hold" FontFamily="Segoe UI" FontSize="13"
+                                                   FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        <Border Style="{StaticResource HelpHintStyle}">
+                                            <Border.ToolTip>
+                                                <ToolTip MaxWidth="320">
+                                                    <TextBlock TextWrapping="Wrap" FontFamily="Segoe UI" FontSize="12">
+                                                        <Run FontWeight="SemiBold" Text="What: "/><Run Text="When Work Assist is on, keep holding F after you alt-tab. F is sent only to Palworld so other programs are not interrupted.&#x0a;"/>
+                                                        <Run FontWeight="SemiBold" Text="When: "/><Run Text="You want workstation progress to continue while you use Discord, a browser, or another app.&#x0a;"/>
+                                                        <Run FontWeight="SemiBold" Text="Note: "/><Run Text="Overrides Focus Lock for Work Assist only."/>
+                                                    </TextBlock>
+                                                </ToolTip>
+                                            </Border.ToolTip>
+                                            <TextBlock Text="?" FontSize="10" FontWeight="Bold"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Text="Keep Work Assist holding F while Palworld is in the background"
+                                               FontFamily="Segoe UI" FontSize="11"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap" Margin="0,2,8,0"/>
+                                    <TextBlock x:Name="ActiveHoldStatusText"
+                                               Text="Off — Work Assist follows Focus Lock"
+                                               FontFamily="Segoe UI" FontSize="10"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Margin="0,6,0,0"/>
+                                </StackPanel>
+                                <ToggleButton x:Name="BetaActiveHoldToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              VerticalAlignment="Top"
+                                              Checked="BetaActiveHoldToggle_Changed"
+                                              Unchecked="BetaActiveHoldToggle_Changed"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- ════════════════════════════════════════
@@ -668,19 +624,6 @@
                                 <Button x:Name="RebindWorkAssistBtn" Grid.Column="1"
                                         Content="F1" Style="{StaticResource RebindBtnStyle}"
                                         Click="RebindWorkAssistBtn_Click"/>
-                            </Grid>
-                            <!-- Sprint Toggle (disabled in v1.1) -->
-                            <Grid x:Name="SprintHotkeyRow" Visibility="Collapsed">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Sprint Toggle" FontFamily="Segoe UI" FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <Button x:Name="RebindSprintBtn" Grid.Column="1"
-                                        Content="F2" Style="{StaticResource RebindBtnStyle}"
-                                        Click="RebindSprintBtn_Click"/>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -989,7 +932,7 @@
                                                 <ToolTip MaxWidth="300">
                                                     <TextBlock TextWrapping="Wrap" FontFamily="Segoe UI" FontSize="12">
                                                         <Run FontWeight="SemiBold" Text="What: "/><Run Text="Unlocks the Beta tab.&#x0a;"/>
-                                                        <Run FontWeight="SemiBold" Text="When: "/><Run Text="You want experimental options like Smart Work Assist."/>
+                                                        <Run FontWeight="SemiBold" Text="When: "/><Run Text="You want experimental options like Smart Work Assist and Active Hold."/>
                                                     </TextBlock>
                                                 </ToolTip>
                                             </Border.ToolTip>
@@ -998,7 +941,7 @@
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                     </StackPanel>
-                                    <TextBlock Text="Unlocks Smart Work Assist on Beta"
+                                    <TextBlock Text="Unlocks Smart Work Assist and Active Hold on Beta"
                                                FontFamily="Segoe UI" FontSize="10"
                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                Margin="0,2,0,0"/>
@@ -1111,10 +1054,6 @@
                         <Run x:Name="FooterWorkAssistKey" Text="F1" FontWeight="Bold"
                              Foreground="{DynamicResource AccentCyanBrush}"/>
                         <Run Text=" work"/>
-                        <Run x:Name="FooterSprintSep" Text=""/>
-                        <Run x:Name="FooterSprintKey" Text="" FontWeight="Bold"
-                             Foreground="{DynamicResource AccentCyanBrush}"/>
-                        <Run x:Name="FooterSprintLabel" Text=""/>
                     </TextBlock>
                 </Border>
 
