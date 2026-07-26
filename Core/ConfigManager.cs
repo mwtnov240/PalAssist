@@ -229,6 +229,13 @@ namespace PalAssist.Core
         [JsonPropertyName("workAssist_showHud")]
         public bool WorkAssistShowHud { get; set; } = true;
 
+        // ── Walk Assist (holds W) ──
+        [JsonPropertyName("walkAssist_enabled")]
+        public bool WalkAssistEnabled { get; set; } = false;
+
+        [JsonPropertyName("walkAssist_showHud")]
+        public bool WalkAssistShowHud { get; set; } = true;
+
         // ── Focus Lock (stable; graduated from Beta) ──
         /// <summary>Release held keys when Palworld is not focused. Default on for new installs.</summary>
         [JsonPropertyName("focus_lock_enabled")]
@@ -263,6 +270,9 @@ namespace PalAssist.Core
 
         [JsonPropertyName("hotkey_workAssist")]
         public string HotkeyWorkAssist { get; set; } = "F1";
+
+        [JsonPropertyName("hotkey_walkAssist")]
+        public string HotkeyWalkAssist { get; set; } = "F2";
 
         // ── Updates ──
         [JsonPropertyName("auto_check_updates")]

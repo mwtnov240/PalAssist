@@ -49,6 +49,7 @@ namespace PalAssist
 
         // ── Features ──
         private WorkAssistFeature? _workAssist;
+        private WalkAssistFeature? _walkAssist;
 
         // ── State ──
         private bool   _menuVisible = false;
@@ -66,6 +67,7 @@ namespace PalAssist
         // ── Hotkey IDs ──
         private int _menuHotkeyId  = -1;
         private int _workAssistHotkeyId = -1;
+        private int _walkAssistHotkeyId = -1;
 
         // ── Rebind state ──
         private string? _rebindTarget = null;
@@ -142,6 +144,9 @@ namespace PalAssist
             _workAssist.SmartWaitAfterTapMs = Math.Clamp(cfg.BetaSmartWorkWaitMs, 0, 1000);
             _featureManager.Register(_workAssist);
 
+            _walkAssist = new WalkAssistFeature();
+            _featureManager.Register(_walkAssist);
+
             // Work Profiles removed — force off leftover config
             cfg.BetaProfileWorkEnabled = false;
 
@@ -166,11 +171,13 @@ namespace PalAssist
             // ── Restore UI state from config ──
             HudDraggableToggle.IsChecked = cfg.HudDraggable;
             WorkAssistShowHudCheck.IsChecked = cfg.WorkAssistShowHud;
+            WalkAssistShowHudCheck.IsChecked = cfg.WalkAssistShowHud;
 
             // Restore HUD preset combo selection
             SetHudPresetCombo(cfg.HudPreset);
 
             if (cfg.WorkAssistEnabled) { _featureManager.Toggle(_workAssist); WorkAssistToggle.IsChecked = true; }
+            if (cfg.WalkAssistEnabled) { _featureManager.Toggle(_walkAssist); WalkAssistToggle.IsChecked = true; }
 
             // ── Listen for rebind keypresses ──
             PreviewKeyDown += OnPreviewKeyDown;
@@ -251,8 +258,9 @@ namespace PalAssist
                     bool found = _windowTracker?.IsFound == true;
                     bool focused = _windowTracker?.IsFocused == true;
                     bool work = _workAssist?.IsEnabled == true;
+                    bool walk = _walkAssist?.IsEnabled == true;
                     bool susp = _featureManager?.IsInputSuspended == true;
-                    return $"found={found} focused={focused} work={work} suspended={susp}";
+                    return $"found={found} focused={focused} work={work} walk={walk} suspended={susp}";
                 }
                 catch { return "(snapshot failed)"; }
             });
@@ -449,6 +457,9 @@ namespace PalAssist
             uint workAssistVk = KeyHelper.ToVk(cfg.HotkeyWorkAssist);
             if (workAssistVk != 0) _workAssistHotkeyId = _hotkeyManager.Register(workAssistVk, 0, OnWorkAssistHotkeyPressed);
 
+            uint walkAssistVk = KeyHelper.ToVk(cfg.HotkeyWalkAssist);
+            if (walkAssistVk != 0) _walkAssistHotkeyId = _hotkeyManager.Register(walkAssistVk, 0, OnWalkAssistHotkeyPressed);
+
             RefreshHotkeyLabels();
         }
 
@@ -459,11 +470,14 @@ namespace PalAssist
 
             RebindMenuBtn.Content = cfg.HotkeyMenu;
             RebindWorkAssistBtn.Content = cfg.HotkeyWorkAssist;
+            RebindWalkAssistBtn.Content = cfg.HotkeyWalkAssist;
 
             WorkAssistSubtitle.Text = $"Holds F  ·  Hotkey: {cfg.HotkeyWorkAssist}";
+            WalkAssistSubtitle.Text = $"Holds W  ·  Hotkey: {cfg.HotkeyWalkAssist}";
 
             FooterMenuKey.Text = cfg.HotkeyMenu;
             FooterWorkAssistKey.Text = cfg.HotkeyWorkAssist;
+            FooterWalkAssistKey.Text = cfg.HotkeyWalkAssist;
         }
 
         // ─────────────────────────────────────────────────
@@ -526,6 +540,7 @@ namespace PalAssist
             if (_windowTracker == null) return;
             bool busy = _menuVisible
                         || (_workAssist?.IsEnabled == true)
+                        || (_walkAssist?.IsEnabled == true)
                         || (_featureManager?.IsTickRunning == true);
             // 100 ms responsive · 400 ms idle (WinEvent still handles focus)
             _windowTracker.SetPollIntervalMs(busy ? 100 : 400);
@@ -533,7 +548,7 @@ namespace PalAssist
 
         private void TickSessionHeartbeat()
         {
-            bool any = _workAssist?.IsEnabled == true;
+            bool any = _workAssist?.IsEnabled == true || _walkAssist?.IsEnabled == true;
             if (!any) return;
             var now = DateTime.UtcNow;
             if (_lastHeartbeatUtc != DateTime.MinValue && now - _lastHeartbeatUtc < HeartbeatInterval)
@@ -541,6 +556,7 @@ namespace PalAssist
             _lastHeartbeatUtc = now;
             AppLog.Info("Heartbeat",
                 $"work={_workAssist?.IsEnabled == true}"
+                + $" walk={_walkAssist?.IsEnabled == true}"
                 + $" bg={_workAssist?.IsBackgroundHold == true}"
                 + $" found={_windowTracker?.IsFound == true}"
                 + $" focused={_windowTracker?.IsFocused == true}"
@@ -649,12 +665,21 @@ namespace PalAssist
             UpdateActiveHoldStatusText();
         }
 
+        private void OnWalkAssistHotkeyPressed()
+        {
+            if (_walkAssist == null || _featureManager == null) return;
+            _featureManager.Toggle(_walkAssist);
+            WalkAssistToggle.IsChecked = _walkAssist.IsEnabled;
+            _soundService.PlayToggle(_walkAssist.IsEnabled);
+        }
+
         // ─────────────────────────────────────────────────
         //  Rebind flow
         // ─────────────────────────────────────────────────
 
         private void RebindMenuBtn_Click(object s, RoutedEventArgs e) => StartRebind("menu");
         private void RebindWorkAssistBtn_Click(object s, RoutedEventArgs e) => StartRebind("workAssist");
+        private void RebindWalkAssistBtn_Click(object s, RoutedEventArgs e) => StartRebind("walkAssist");
 
         /// <summary>
         /// WS_EX_NOACTIVATE is cleared while rebinding hotkeys OR editing a TextBox.
@@ -669,6 +694,7 @@ namespace PalAssist
             var btn = target switch
             {
                 "menu" => RebindMenuBtn,
+                "walkAssist" => RebindWalkAssistBtn,
                 _ => RebindWorkAssistBtn
             };
             btn.Content = "Press a key…";
@@ -794,6 +820,7 @@ namespace PalAssist
 
                 ref int id = ref _menuHotkeyId;
                 if (savedTarget == "workAssist") id = ref _workAssistHotkeyId;
+                else if (savedTarget == "walkAssist") id = ref _walkAssistHotkeyId;
 
                 // Restore NOACTIVATE before re-registering hotkeys
                 EndRebind();
@@ -814,6 +841,7 @@ namespace PalAssist
             Action cb = target switch
             {
                 "menu" => OnMenuHotkeyPressed,
+                "walkAssist" => OnWalkAssistHotkeyPressed,
                 _ => OnWorkAssistHotkeyPressed
             };
             hotkeyId = _hotkeyManager.Register(newVk, 0, cb);
@@ -822,6 +850,7 @@ namespace PalAssist
             {
                 case "menu": _configManager.Config.HotkeyMenu = newName; break;
                 case "workAssist": _configManager.Config.HotkeyWorkAssist = newName; break;
+                case "walkAssist": _configManager.Config.HotkeyWalkAssist = newName; break;
             }
             _configManager.Save();
             RefreshHotkeyLabels();
@@ -917,7 +946,7 @@ namespace PalAssist
             var missing = DateTime.UtcNow - _gameMissingSinceUtc.Value;
             if (missing.TotalMinutes < AfkSafetyMinutes) return;
 
-            bool anyOn = _workAssist?.IsEnabled == true;
+            bool anyOn = _workAssist?.IsEnabled == true || _walkAssist?.IsEnabled == true;
             if (!anyOn)
             {
                 _afkSafetyFired = true;
@@ -950,6 +979,8 @@ namespace PalAssist
 
             if (WorkAssistToggle.IsChecked == true)
                 WorkAssistToggle.IsChecked = false;
+            if (WalkAssistToggle.IsChecked == true)
+                WalkAssistToggle.IsChecked = false;
 
             SyncUI();
 
@@ -1008,6 +1039,17 @@ namespace PalAssist
             }
         }
 
+        private void WalkAssistToggle_Changed(object s, RoutedEventArgs e)
+        {
+            if (_walkAssist == null || _featureManager == null) return;
+            bool want = WalkAssistToggle.IsChecked == true;
+            if (want != _walkAssist.IsEnabled)
+            {
+                _featureManager.Toggle(_walkAssist);
+                _soundService.PlayToggle(_walkAssist.IsEnabled);
+            }
+        }
+
         // ─────────────────────────────────────────────────
         //  HUD Settings handlers
         // ─────────────────────────────────────────────────
@@ -1033,6 +1075,13 @@ namespace PalAssist
         {
             if (_configManager == null) return;
             _configManager.Config.WorkAssistShowHud = WorkAssistShowHudCheck.IsChecked == true;
+            UpdateHud();
+        }
+
+        private void WalkAssistShowHudCheck_Changed(object s, RoutedEventArgs e)
+        {
+            if (_configManager == null) return;
+            _configManager.Config.WalkAssistShowHud = WalkAssistShowHudCheck.IsChecked == true;
             UpdateHud();
         }
 
@@ -1509,10 +1558,12 @@ namespace PalAssist
             // Sync live UI / feature state into the config object before writing
             var cfg = _configManager.Config;
             if (_workAssist != null) cfg.WorkAssistEnabled = _workAssist.IsEnabled;
+            if (_walkAssist != null) cfg.WalkAssistEnabled = _walkAssist.IsEnabled;
             cfg.BetaProfileWorkEnabled = false;
 
             cfg.HudDraggable = HudDraggableToggle.IsChecked == true;
             cfg.WorkAssistShowHud = WorkAssistShowHudCheck.IsChecked == true;
+            cfg.WalkAssistShowHud = WalkAssistShowHudCheck.IsChecked == true;
             cfg.MenuX = Canvas.GetLeft(MenuPanel);
             cfg.MenuY = Canvas.GetTop(MenuPanel);
             cfg.BetaEnabled = BetaEnabledToggle.IsChecked == true;
@@ -1753,7 +1804,9 @@ namespace PalAssist
                 if (_configManager != null)
                 {
                     if (_workAssist != null) _configManager.Config.WorkAssistEnabled = false;
+                    if (_walkAssist != null) _configManager.Config.WalkAssistEnabled = false;
                     WorkAssistToggle.IsChecked = false;
+                    WalkAssistToggle.IsChecked = false;
                     _configManager.Config.MenuX = Canvas.GetLeft(MenuPanel);
                     _configManager.Config.MenuY = Canvas.GetTop(MenuPanel);
                     _configManager.Save();
@@ -1914,6 +1967,14 @@ namespace PalAssist
                     : (SolidColorBrush)FindResource("AccentRedBrush");
                 WorkAssistToggle.IsChecked = on;
             }
+            if (_walkAssist != null)
+            {
+                bool on = _walkAssist.IsEnabled;
+                WalkAssistDot.Fill = on
+                    ? (SolidColorBrush)FindResource("AccentGreenBrush")
+                    : (SolidColorBrush)FindResource("AccentRedBrush");
+                WalkAssistToggle.IsChecked = on;
+            }
             UpdateHud();
         }
 
@@ -1931,6 +1992,12 @@ namespace PalAssist
             {
                 anyActive = true;
                 AddHudRow("Work Assist", "Active", (SolidColorBrush)FindResource("AccentGreenBrush"));
+            }
+
+            if (_walkAssist != null && _walkAssist.IsEnabled && (_configManager == null || _configManager.Config.WalkAssistShowHud))
+            {
+                anyActive = true;
+                AddHudRow("Walk Assist", "Active", (SolidColorBrush)FindResource("AccentGreenBrush"));
             }
 
             HudPanel.Visibility = anyActive ? Visibility.Visible : Visibility.Collapsed;
@@ -2189,6 +2256,9 @@ namespace PalAssist
                 try
                 {
                     if (_workAssist != null) _configManager.Config.WorkAssistEnabled = _workAssist.IsEnabled;
+                    if (_walkAssist != null) _configManager.Config.WalkAssistEnabled = _walkAssist.IsEnabled;
+                    _configManager.Config.WorkAssistShowHud = WorkAssistShowHudCheck.IsChecked == true;
+                    _configManager.Config.WalkAssistShowHud = WalkAssistShowHudCheck.IsChecked == true;
                     _configManager.Config.BetaProfileWorkEnabled = false;
                     _configManager.Config.MenuX = Canvas.GetLeft(MenuPanel);
                     _configManager.Config.MenuY = Canvas.GetTop(MenuPanel);
@@ -2330,7 +2400,9 @@ namespace PalAssist
             if (_configManager == null) return;
             var cfg = _configManager.Config;
             if (_workAssist != null) cfg.WorkAssistEnabled = _workAssist.IsEnabled;
+            if (_walkAssist != null) cfg.WalkAssistEnabled = _walkAssist.IsEnabled;
             cfg.WorkAssistShowHud = WorkAssistShowHudCheck.IsChecked == true;
+            cfg.WalkAssistShowHud = WalkAssistShowHudCheck.IsChecked == true;
             cfg.FocusLockEnabled = FocusLockToggle.IsChecked == true;
             cfg.BetaEnabled = BetaEnabledToggle.IsChecked == true;
             cfg.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true && cfg.BetaEnabled;
@@ -2378,6 +2450,7 @@ namespace PalAssist
 
             HudDraggableToggle.IsChecked = cfg.HudDraggable;
             WorkAssistShowHudCheck.IsChecked = cfg.WorkAssistShowHud;
+            WalkAssistShowHudCheck.IsChecked = cfg.WalkAssistShowHud;
             SetHudPresetCombo(cfg.HudPreset);
 
             // Re-register hotkeys from imported names
@@ -2387,7 +2460,8 @@ namespace PalAssist
                 {
                     if (_menuHotkeyId >= 0) _hotkeyManager.Unregister(_menuHotkeyId);
                     if (_workAssistHotkeyId >= 0) _hotkeyManager.Unregister(_workAssistHotkeyId);
-                    _menuHotkeyId = _workAssistHotkeyId = -1;
+                    if (_walkAssistHotkeyId >= 0) _hotkeyManager.Unregister(_walkAssistHotkeyId);
+                    _menuHotkeyId = _workAssistHotkeyId = _walkAssistHotkeyId = -1;
                     RegisterConfigHotkeys();
                 }
             }

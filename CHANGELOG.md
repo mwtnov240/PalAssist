@@ -1,5 +1,15 @@
 # PalAssist Changelog
 
+## 2.4.0
+
+**Walk Assist**
+
+- **Walk Assist**: holds **W** for continuous forward walk (same hold backend as Work Assist)
+- Toggle from the Assists tab or a rebindable hotkey (default **F2**)
+- Optional HUD indicator; works with Focus Lock, Emergency Stop, and AFK safety
+- Can run together with Work Assist (F + W)
+- Force-release and emergency paths also release W
+
 ## 2.3.0
 
 **Stability hardening & backend efficiency (no new assists)**

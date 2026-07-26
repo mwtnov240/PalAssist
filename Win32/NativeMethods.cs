@@ -216,8 +216,10 @@ namespace PalAssist.Win32
         public const uint KEYEVENTF_SCANCODE  = 0x0008;
         public const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
 
-        // Virtual keys / scan codes used for game input (Work Assist holds F)
-        public const ushort VK_F   = 0x46;
+        // Virtual keys / scan codes used for game input
+        public const ushort VK_W   = 0x57; // Walk Assist
+        public const ushort VK_F   = 0x46; // Work Assist
+        public const ushort SCAN_W = 0x11;
         public const ushort SCAN_F = 0x21;
 
         /// <summary>
