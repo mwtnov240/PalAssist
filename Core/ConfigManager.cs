@@ -234,19 +234,6 @@ namespace PalAssist.Core
         [JsonPropertyName("focus_lock_enabled")]
         public bool FocusLockEnabled { get; set; } = true;
 
-        // ── Sprint Assist ──
-        [JsonPropertyName("sprint_enabled")]
-        public bool SprintEnabled { get; set; } = false;
-
-        [JsonPropertyName("sprint_duration")]
-        public double SprintDuration { get; set; } = 8.0;
-
-        [JsonPropertyName("sprint_recovery")]
-        public double RecoveryDuration { get; set; } = 4.0;
-
-        [JsonPropertyName("sprint_pauseDodge")]
-        public bool SprintPauseDodge { get; set; } = false;
-
         // ── HUD ──
         [JsonPropertyName("show_hud")]
         public bool ShowHud { get; set; } = true;
@@ -276,9 +263,6 @@ namespace PalAssist.Core
 
         [JsonPropertyName("hotkey_workAssist")]
         public string HotkeyWorkAssist { get; set; } = "F1";
-
-        [JsonPropertyName("hotkey_sprint")]
-        public string HotkeySprint { get; set; } = "F2";
 
         // ── Updates ──
         [JsonPropertyName("auto_check_updates")]
@@ -378,6 +362,14 @@ namespace PalAssist.Core
         /// </summary>
         [JsonPropertyName("beta_smartWorkWaitMs")]
         public int BetaSmartWorkWaitMs { get; set; } = 500;
+
+        /// <summary>
+        /// When true (and Beta is unlocked), Work Assist keeps holding F while Palworld
+        /// is in the background by targeting the game window only (other apps stay clean).
+        /// Overrides Focus Lock for Work Assist only.
+        /// </summary>
+        [JsonPropertyName("beta_activeHold")]
+        public bool BetaActiveHold { get; set; } = false;
 
         // ── AFK safety ──
         /// <summary>

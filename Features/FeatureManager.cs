@@ -9,6 +9,7 @@ namespace PalAssist.Features
     /// <summary>
     /// Central registry for assist features. Owns enable/suspend/tick/release serialization
     /// so Focus Lock, AFK, emergency stop, and the tick loop cannot race held keys.
+    /// Supports selective suspend: Active Hold can keep Work Assist ticking while Focus Lock suspends other assists.
     /// </summary>
     public sealed class FeatureManager : IDisposable
     {
@@ -21,7 +22,10 @@ namespace PalAssist.Features
         /// <summary>Read-only view of all registered features.</summary>
         public IReadOnlyList<IFeature> Features => _features;
 
-        /// <summary>True when all features have input suspended (Focus Lock).</summary>
+        /// <summary>
+        /// True when Focus Lock (or equivalent) requested a suspend.
+        /// Individual features may still be active under Active Hold.
+        /// </summary>
         public bool IsInputSuspended
         {
             get { lock (_gate) return _inputSuspended; }
@@ -72,6 +76,8 @@ namespace PalAssist.Features
                     else
                     {
                         feature.OnEnable();
+                        // Focus Lock suspend: newly enabled features start suspended.
+                        // MainWindow may promote Work Assist to Active Hold background mode after this.
                         if (_inputSuspended)
                             feature.SuspendInput();
                     }
@@ -151,27 +157,168 @@ namespace PalAssist.Features
             SafeRaise(StateChanged);
         }
 
-        public void SetInputSuspended(bool suspended)
+        /// <summary>
+        /// Focus-loss suspend. When <paramref name="activeHoldWorkAssist"/> is true and a game
+        /// HWND is provided, Work Assist enters background hold instead of full suspend.
+        /// </summary>
+        public void SetInputSuspended(bool suspended, bool activeHoldWorkAssist = false, IntPtr gameHwnd = default)
         {
             lock (_gate)
             {
                 if (_disposed) return;
-                if (_inputSuspended == suspended) return;
-                _inputSuspended = suspended;
 
+                if (suspended)
+                {
+                    _inputSuspended = true;
+                    foreach (var f in _features)
+                    {
+                        if (!f.IsEnabled) continue;
+                        try
+                        {
+                            if (f is WorkAssistFeature wa && activeHoldWorkAssist)
+                            {
+                                // Stay in background hold if already there (avoid interrupting work)
+                                if (wa.IsBackgroundHold)
+                                    wa.UpdateBackgroundHwnd(gameHwnd);
+                                else
+                                    wa.EnterBackgroundHold(gameHwnd);
+                            }
+                            else if (f is WorkAssistFeature waNoHold)
+                            {
+                                // Active Hold off: full suspend (exit background if needed)
+                                if (waNoHold.IsBackgroundHold || !waNoHold.IsInputSuspended)
+                                    waNoHold.SuspendInput();
+                            }
+                            else if (!f.IsInputSuspended)
+                            {
+                                f.SuspendInput();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLog.Error("FeatureManager.SetInputSuspended", f.Name + ": " + ex.Message, ex);
+                        }
+                    }
+                }
+                else
+                {
+                    if (!_inputSuspended)
+                    {
+                        // Still may need to leave Active Hold background when Focus Lock is off
+                        foreach (var f in _features)
+                        {
+                            if (f is WorkAssistFeature wa && wa.IsEnabled && wa.IsBackgroundHold)
+                            {
+                                try { wa.ExitBackgroundHoldToForeground(); }
+                                catch (Exception ex)
+                                {
+                                    AppLog.Error("FeatureManager.SetInputSuspended.bg", ex.Message, ex);
+                                }
+                            }
+                        }
+                        return;
+                    }
+
+                    _inputSuspended = false;
+                    foreach (var f in _features)
+                    {
+                        if (!f.IsEnabled) continue;
+                        try
+                        {
+                            if (f is WorkAssistFeature wa)
+                            {
+                                if (wa.IsBackgroundHold)
+                                    wa.ExitBackgroundHoldToForeground();
+                                else if (wa.IsInputSuspended)
+                                    wa.ResumeInput();
+                            }
+                            else if (f.IsInputSuspended)
+                            {
+                                f.ResumeInput();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLog.Error("FeatureManager.SetInputSuspended.resume", f.Name + ": " + ex.Message, ex);
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Keep Work Assist in (or enter) background hold without changing other feature suspend state.
+        /// Used when Active Hold is on, Focus Lock is off, and the game loses focus.
+        /// </summary>
+        public void ApplyWorkAssistBackgroundHold(IntPtr gameHwnd)
+        {
+            lock (_gate)
+            {
+                if (_disposed) return;
                 foreach (var f in _features)
                 {
-                    if (!f.IsEnabled) continue;
-                    try
+                    if (f is WorkAssistFeature wa && wa.IsEnabled)
                     {
-                        if (suspended)
-                            f.SuspendInput();
-                        else
-                            f.ResumeInput();
+                        try
+                        {
+                            if (wa.IsBackgroundHold)
+                                wa.UpdateBackgroundHwnd(gameHwnd);
+                            else
+                                wa.EnterBackgroundHold(gameHwnd);
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLog.Error("FeatureManager.ApplyWorkAssistBackgroundHold", ex.Message, ex);
+                        }
                     }
-                    catch (Exception ex)
+                }
+            }
+        }
+
+        /// <summary>
+        /// If Work Assist is in background hold and the game is focused again (Focus Lock off path),
+        /// return to SendInput hold.
+        /// </summary>
+        public void ApplyWorkAssistForegroundHold()
+        {
+            lock (_gate)
+            {
+                if (_disposed) return;
+                foreach (var f in _features)
+                {
+                    if (f is WorkAssistFeature wa && wa.IsEnabled && wa.IsBackgroundHold)
                     {
-                        AppLog.Error("FeatureManager.SetInputSuspended", f.Name + ": " + ex.Message, ex);
+                        try
+                        {
+                            wa.ExitBackgroundHoldToForeground();
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLog.Error("FeatureManager.ApplyWorkAssistForegroundHold", ex.Message, ex);
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>Refresh background HWND or suspend Work Assist if the game vanished.</summary>
+        public void UpdateWorkAssistBackgroundHwnd(IntPtr gameHwnd)
+        {
+            lock (_gate)
+            {
+                if (_disposed) return;
+                foreach (var f in _features)
+                {
+                    if (f is WorkAssistFeature wa && wa.IsEnabled && wa.IsBackgroundHold)
+                    {
+                        try
+                        {
+                            wa.UpdateBackgroundHwnd(gameHwnd);
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLog.Error("FeatureManager.UpdateWorkAssistBackgroundHwnd", ex.Message, ex);
+                        }
                     }
                 }
             }
@@ -183,8 +330,10 @@ namespace PalAssist.Features
             {
                 lock (_gate)
                 {
-                    if (_disposed || _inputSuspended) return;
+                    if (_disposed) return;
 
+                    // Tick per-feature: Work Assist may still run under Active Hold while
+                    // Focus Lock has suspended other assists.
                     foreach (var f in _features)
                     {
                         try
@@ -214,9 +363,6 @@ namespace PalAssist.Features
                 for (int i = 0; i < 2; i++)
                 {
                     InputSimulator.KeyUp(NativeMethods.VK_F, NativeMethods.SCAN_F);
-                    InputSimulator.KeyUp(NativeMethods.VK_W, NativeMethods.SCAN_W);
-                    InputSimulator.KeyUp(NativeMethods.VK_E, NativeMethods.SCAN_E);
-                    InputSimulator.KeyUp(NativeMethods.VK_LSHIFT, NativeMethods.SCAN_SHIFT);
                 }
             }
             catch (Exception ex)

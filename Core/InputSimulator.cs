@@ -43,6 +43,43 @@ namespace PalAssist.Core
             SendKey(virtualKey, scanCode, keyUp: true);
         }
 
+        /// <summary>
+        /// Post a key-down to a specific window (does not affect the global key state
+        /// or the currently focused app). Used for Active Hold background work.
+        /// </summary>
+        public static void PostKeyDown(IntPtr hwnd, ushort virtualKey, ushort scanCode)
+        {
+            if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd)) return;
+            if (scanCode == 0 && virtualKey != 0)
+                scanCode = (ushort)NativeMethods.MapVirtualKey(virtualKey, NativeMethods.MAPVK_VK_TO_VSC);
+            IntPtr wParam = new IntPtr(virtualKey);
+            // First press: previous-down=false; subsequent holds use previous-down=true
+            IntPtr lParam = NativeMethods.MakeKeyLParam(scanCode, keyUp: false, previousDown: false);
+            NativeMethods.PostMessage(hwnd, NativeMethods.WM_KEYDOWN, wParam, lParam);
+        }
+
+        /// <summary>Repeat-style key-down (previous key state = down) for held keys.</summary>
+        public static void PostKeyDownRepeat(IntPtr hwnd, ushort virtualKey, ushort scanCode)
+        {
+            if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd)) return;
+            if (scanCode == 0 && virtualKey != 0)
+                scanCode = (ushort)NativeMethods.MapVirtualKey(virtualKey, NativeMethods.MAPVK_VK_TO_VSC);
+            IntPtr wParam = new IntPtr(virtualKey);
+            IntPtr lParam = NativeMethods.MakeKeyLParam(scanCode, keyUp: false, previousDown: true, repeatCount: 1);
+            NativeMethods.PostMessage(hwnd, NativeMethods.WM_KEYDOWN, wParam, lParam);
+        }
+
+        /// <summary>Post a key-up to a specific window.</summary>
+        public static void PostKeyUp(IntPtr hwnd, ushort virtualKey, ushort scanCode)
+        {
+            if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd)) return;
+            if (scanCode == 0 && virtualKey != 0)
+                scanCode = (ushort)NativeMethods.MapVirtualKey(virtualKey, NativeMethods.MAPVK_VK_TO_VSC);
+            IntPtr wParam = new IntPtr(virtualKey);
+            IntPtr lParam = NativeMethods.MakeKeyLParam(scanCode, keyUp: true, previousDown: true);
+            NativeMethods.PostMessage(hwnd, NativeMethods.WM_KEYUP, wParam, lParam);
+        }
+
         private static void SendKey(ushort virtualKey, ushort scanCode, bool keyUp)
         {
             int size = Marshal.SizeOf<NativeMethods.INPUT>();
@@ -89,10 +126,7 @@ namespace PalAssist.Core
 
         private static ushort ScanToVk(ushort scanCode) => scanCode switch
         {
-            NativeMethods.SCAN_W     => NativeMethods.VK_W,
-            NativeMethods.SCAN_E     => NativeMethods.VK_E,
-            NativeMethods.SCAN_F     => NativeMethods.VK_F,
-            NativeMethods.SCAN_SHIFT => NativeMethods.VK_LSHIFT,
+            NativeMethods.SCAN_F => NativeMethods.VK_F,
             _ => 0
         };
     }

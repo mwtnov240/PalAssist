@@ -78,7 +78,7 @@ Output: `publish\win-x64\PalAssist.exe`
 ├── App.xaml / MainWindow.xaml
 ├── Assets/app.ico            # Application icon
 ├── Core/                     # Config, input, focus, updates, logging
-├── Features/                 # WorkAssist, Sprint (disabled), FeatureManager
+├── Features/                 # WorkAssist, FeatureManager
 ├── Win32/                    # P/Invoke
 ├── CHANGELOG.md
 ├── STRESS.md

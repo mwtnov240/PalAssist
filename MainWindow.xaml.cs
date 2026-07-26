@@ -36,11 +36,6 @@ namespace PalAssist
 {
     public partial class MainWindow : Window
     {
-        /// <summary>
-        /// Sprint Assist is turned off for v1.1. Set true to restore UI, hotkey, and feature.
-        /// </summary>
-        private static readonly bool SprintAssistAvailable = false;
-
         // ── Managers ──
         private HotkeyManager?  _hotkeyManager;
         private WindowTracker?  _windowTracker;
@@ -53,8 +48,7 @@ namespace PalAssist
         private bool _updateInProgress;
 
         // ── Features ──
-        private WorkAssistFeature?         _workAssist;
-        private SprintAssistFeature?  _sprint;
+        private WorkAssistFeature? _workAssist;
 
         // ── State ──
         private bool   _menuVisible = false;
@@ -70,9 +64,8 @@ namespace PalAssist
         private bool _focusLockWantSuspend;
 
         // ── Hotkey IDs ──
-        private int _menuHotkeyId   = -1;
-        private int _workAssistHotkeyId  = -1;
-        private int _sprintHotkeyId = -1;
+        private int _menuHotkeyId  = -1;
+        private int _workAssistHotkeyId = -1;
 
         // ── Rebind state ──
         private string? _rebindTarget = null;
@@ -91,7 +84,7 @@ namespace PalAssist
         private Point _hudDragStart;
         private double _hudDragStartLeft, _hudDragStartTop;
 
-        // ── Sprint status update timer ──
+        // ── UI timer (AFK safety + status poll) ──
         private DispatcherTimer? _uiTimer;
 
         // ── UI restore guards (avoid recursive Checked handlers) ──
@@ -144,23 +137,6 @@ namespace PalAssist
             _workAssist.SmartWaitAfterTapMs = Math.Clamp(cfg.BetaSmartWorkWaitMs, 0, 1000);
             _featureManager.Register(_workAssist);
 
-            if (SprintAssistAvailable)
-            {
-                _sprint = new SprintAssistFeature
-                {
-                    SprintDurationSec  = cfg.SprintDuration,
-                    RecoveryDurationSec = cfg.RecoveryDuration,
-                    PauseDodge         = cfg.SprintPauseDodge
-                };
-                _sprint.StateChanged += () => UiPost(SyncSprintStatus);
-                _featureManager.Register(_sprint);
-            }
-            else
-            {
-                // Ensure a previous install cannot leave sprint "on" in config
-                cfg.SprintEnabled = false;
-            }
-
             // Work Profiles removed — force off leftover config
             cfg.BetaProfileWorkEnabled = false;
 
@@ -183,23 +159,13 @@ namespace PalAssist
             RegisterConfigHotkeys();
 
             // ── Restore UI state from config ──
-            SprintDurSlider.Value   = cfg.SprintDuration;
-            RecoveryDurSlider.Value = cfg.RecoveryDuration;
-            PauseDodgeCheck.IsChecked = cfg.SprintPauseDodge;
             HudDraggableToggle.IsChecked = cfg.HudDraggable;
             WorkAssistShowHudCheck.IsChecked = cfg.WorkAssistShowHud;
 
             // Restore HUD preset combo selection
             SetHudPresetCombo(cfg.HudPreset);
 
-            ApplySprintAssistAvailabilityUi();
-
             if (cfg.WorkAssistEnabled) { _featureManager.Toggle(_workAssist); WorkAssistToggle.IsChecked = true; }
-            if (SprintAssistAvailable && cfg.SprintEnabled && _sprint != null)
-            {
-                _featureManager.Toggle(_sprint);
-                SprintToggle.IsChecked = true;
-            }
 
             // ── Listen for rebind keypresses ──
             PreviewKeyDown += OnPreviewKeyDown;
@@ -215,14 +181,14 @@ namespace PalAssist
 
             this.SizeChanged += (_, _) => { PositionHud(); PositionCrosshair(); ClampMenuToCanvas(); };
 
-            // ── UI timer: sprint status + AFK safety poll ──
+            // ── UI timer: AFK safety + Active Hold status ──
             _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
             _uiTimer.Tick += (_, _) =>
             {
                 try
                 {
-                    SyncSprintStatus();
                     TickAfkSafety();
+                    UpdateActiveHoldStatusText();
                 }
                 catch (Exception ex)
                 {
@@ -294,16 +260,19 @@ namespace PalAssist
             PositionHud();
             PositionCrosshair();
 
-            // Restore menu position if saved, otherwise centre it
+            // Restore menu position if saved, otherwise centre it — always clamp after layout
+            // so a large menu_x from a previous monitor/resolution cannot hide the card.
             if (!double.IsNaN(cfg.MenuX) && !double.IsNaN(cfg.MenuY))
             {
                 Canvas.SetLeft(MenuPanel, cfg.MenuX);
                 Canvas.SetTop(MenuPanel, cfg.MenuY);
             }
-            else
+            Dispatcher.InvokeAsync(() =>
             {
-                Dispatcher.InvokeAsync(CentreMenuIfNeeded, DispatcherPriority.Loaded);
-            }
+                if (double.IsNaN(Canvas.GetLeft(MenuPanel)) || Canvas.GetLeft(MenuPanel) < 0)
+                    CentreMenuIfNeeded();
+                ClampMenuToCanvas();
+            }, DispatcherPriority.Loaded);
 
 
             // ── Updates ──
@@ -466,20 +435,7 @@ namespace PalAssist
             uint workAssistVk = KeyHelper.ToVk(cfg.HotkeyWorkAssist);
             if (workAssistVk != 0) _workAssistHotkeyId = _hotkeyManager.Register(workAssistVk, 0, OnWorkAssistHotkeyPressed);
 
-            if (SprintAssistAvailable)
-            {
-                uint sprintVk = KeyHelper.ToVk(cfg.HotkeySprint);
-                if (sprintVk != 0) _sprintHotkeyId = _hotkeyManager.Register(sprintVk, 0, OnSprintHotkeyPressed);
-            }
-
             RefreshHotkeyLabels();
-        }
-
-        private void ApplySprintAssistAvailabilityUi()
-        {
-            var vis = SprintAssistAvailable ? Visibility.Visible : Visibility.Collapsed;
-            SprintAssistCard.Visibility = vis;
-            SprintHotkeyRow.Visibility = vis;
         }
 
         private void RefreshHotkeyLabels()
@@ -487,28 +443,13 @@ namespace PalAssist
             if (_configManager == null) return;
             var cfg = _configManager.Config;
 
-            RebindMenuBtn.Content    = cfg.HotkeyMenu;
-            RebindWorkAssistBtn.Content   = cfg.HotkeyWorkAssist;
-            RebindSprintBtn.Content  = cfg.HotkeySprint;
+            RebindMenuBtn.Content = cfg.HotkeyMenu;
+            RebindWorkAssistBtn.Content = cfg.HotkeyWorkAssist;
 
-            WorkAssistSubtitle.Text   = $"Holds F  ·  Hotkey: {cfg.HotkeyWorkAssist}";
-            SprintSubtitle.Text  = $"Auto forward + sprint cycles  ·  Hotkey: {cfg.HotkeySprint}";
+            WorkAssistSubtitle.Text = $"Holds F  ·  Hotkey: {cfg.HotkeyWorkAssist}";
 
-            FooterMenuKey.Text   = cfg.HotkeyMenu;
-            FooterWorkAssistKey.Text  = cfg.HotkeyWorkAssist;
-
-            if (SprintAssistAvailable)
-            {
-                FooterSprintSep.Text = "  ·  ";
-                FooterSprintKey.Text = cfg.HotkeySprint;
-                FooterSprintLabel.Text = " sprint";
-            }
-            else
-            {
-                FooterSprintSep.Text = "";
-                FooterSprintKey.Text = "";
-                FooterSprintLabel.Text = "";
-            }
+            FooterMenuKey.Text = cfg.HotkeyMenu;
+            FooterWorkAssistKey.Text = cfg.HotkeyWorkAssist;
         }
 
         // ─────────────────────────────────────────────────
@@ -530,7 +471,20 @@ namespace PalAssist
             MenuPanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
             SetClickThrough(!visible);
             SetMenuCursorForced(visible);
-            if (visible) CentreMenuIfNeeded();
+            if (visible)
+            {
+                CentreMenuIfNeeded();
+                // Layout may not have ActualWidth yet — clamp after measure so saved
+                // menu_x cannot sit fully past the right edge of a smaller game window.
+                try
+                {
+                    Dispatcher.InvokeAsync(ClampMenuToCanvas, DispatcherPriority.Loaded);
+                }
+                catch
+                {
+                    ClampMenuToCanvas();
+                }
+            }
         }
 
         private void SetMenuCursorForced(bool force)
@@ -570,23 +524,16 @@ namespace PalAssist
             _featureManager.Toggle(_workAssist);
             WorkAssistToggle.IsChecked = _workAssist.IsEnabled;
             _soundService.PlayToggle(_workAssist.IsEnabled);
-        }
-
-        private void OnSprintHotkeyPressed()
-        {
-            if (!SprintAssistAvailable || _sprint == null || _featureManager == null) return;
-            _featureManager.Toggle(_sprint);
-            SprintToggle.IsChecked = _sprint.IsEnabled;
-            _soundService.PlayToggle(_sprint.IsEnabled);
+            SyncWorkAssistFocusMode(playSound: false);
+            UpdateActiveHoldStatusText();
         }
 
         // ─────────────────────────────────────────────────
         //  Rebind flow
         // ─────────────────────────────────────────────────
 
-        private void RebindMenuBtn_Click(object s, RoutedEventArgs e)   => StartRebind("menu");
-        private void RebindWorkAssistBtn_Click(object s, RoutedEventArgs e)  => StartRebind("workAssist");
-        private void RebindSprintBtn_Click(object s, RoutedEventArgs e) => StartRebind("sprint");
+        private void RebindMenuBtn_Click(object s, RoutedEventArgs e) => StartRebind("menu");
+        private void RebindWorkAssistBtn_Click(object s, RoutedEventArgs e) => StartRebind("workAssist");
 
         /// <summary>
         /// WS_EX_NOACTIVATE is cleared while rebinding hotkeys OR editing a TextBox.
@@ -601,8 +548,7 @@ namespace PalAssist
             var btn = target switch
             {
                 "menu" => RebindMenuBtn,
-                "workAssist" => RebindWorkAssistBtn,
-                _ => RebindSprintBtn
+                _ => RebindWorkAssistBtn
             };
             btn.Content = "Press a key…";
             BeginKeyCapture();
@@ -726,8 +672,7 @@ namespace PalAssist
                 string savedTarget = _rebindTarget!;
 
                 ref int id = ref _menuHotkeyId;
-                if (savedTarget == "workAssist")  id = ref _workAssistHotkeyId;
-                if (savedTarget == "sprint") id = ref _sprintHotkeyId;
+                if (savedTarget == "workAssist") id = ref _workAssistHotkeyId;
 
                 // Restore NOACTIVATE before re-registering hotkeys
                 EndRebind();
@@ -747,17 +692,15 @@ namespace PalAssist
 
             Action cb = target switch
             {
-                "menu"  => OnMenuHotkeyPressed,
-                "workAssist" => OnWorkAssistHotkeyPressed,
-                _       => OnSprintHotkeyPressed
+                "menu" => OnMenuHotkeyPressed,
+                _ => OnWorkAssistHotkeyPressed
             };
             hotkeyId = _hotkeyManager.Register(newVk, 0, cb);
 
             switch (target)
             {
-                case "menu":   _configManager.Config.HotkeyMenu   = newName; break;
-                case "workAssist":  _configManager.Config.HotkeyWorkAssist  = newName; break;
-                case "sprint": _configManager.Config.HotkeySprint = newName; break;
+                case "menu": _configManager.Config.HotkeyMenu = newName; break;
+                case "workAssist": _configManager.Config.HotkeyWorkAssist = newName; break;
             }
             _configManager.Save();
             RefreshHotkeyLabels();
@@ -787,11 +730,18 @@ namespace PalAssist
 
         private void AlignToGame(NativeMethods.RECT rect)
         {
+            int w = rect.Right - rect.Left;
+            int h = rect.Bottom - rect.Top;
+            // Ignore bogus zero-size rects (would hide the entire overlay)
+            if (w < 32 || h < 32) return;
+
             this.Left   = rect.Left;
             this.Top    = rect.Top;
-            this.Width  = rect.Right  - rect.Left;
-            this.Height = rect.Bottom - rect.Top;
+            this.Width  = w;
+            this.Height = h;
             PositionCrosshair();
+            ClampMenuToCanvas();
+            PositionHud();
         }
 
         private void OnGameDetected(bool found)
@@ -805,7 +755,9 @@ namespace PalAssist
                 GameStatusText.Text = "Palworld not found";
                 if (_gameMissingSinceUtc == null)
                     _gameMissingSinceUtc = DateTime.UtcNow;
-                // Focus path also fires; keep status labels in sync
+                // Drop window-targeted hold if game vanished
+                try { _featureManager?.UpdateWorkAssistBackgroundHwnd(IntPtr.Zero); }
+                catch { /* ignore */ }
                 UpdateFocusLockStatus();
                 return;
             }
@@ -817,6 +769,18 @@ namespace PalAssist
             GameStatusText.Text = string.IsNullOrEmpty(platform)
                 ? "Palworld connected"
                 : $"Palworld connected ({platform})";
+
+            // Refresh background HWND if Active Hold is already running
+            if (_workAssist?.IsBackgroundHold == true)
+            {
+                try
+                {
+                    _featureManager?.UpdateWorkAssistBackgroundHwnd(
+                        _windowTracker?.TargetHwnd ?? IntPtr.Zero);
+                }
+                catch { /* ignore */ }
+            }
+
             UpdateFocusLockStatus();
         }
 
@@ -830,8 +794,7 @@ namespace PalAssist
             var missing = DateTime.UtcNow - _gameMissingSinceUtc.Value;
             if (missing.TotalMinutes < AfkSafetyMinutes) return;
 
-            bool anyOn = (_workAssist?.IsEnabled == true)
-                         || (_sprint?.IsEnabled == true);
+            bool anyOn = _workAssist?.IsEnabled == true;
             if (!anyOn)
             {
                 _afkSafetyFired = true;
@@ -864,8 +827,6 @@ namespace PalAssist
 
             if (WorkAssistToggle.IsChecked == true)
                 WorkAssistToggle.IsChecked = false;
-            if (SprintToggle.IsChecked == true)
-                SprintToggle.IsChecked = false;
 
             SyncUI();
 
@@ -919,42 +880,9 @@ namespace PalAssist
             {
                 _featureManager.Toggle(_workAssist);
                 _soundService.PlayToggle(_workAssist.IsEnabled);
+                // If enabled while unfocused, Active Hold may need background mode
+                SyncWorkAssistFocusMode(playSound: false);
             }
-        }
-
-        private void SprintToggle_Changed(object s, RoutedEventArgs e)
-        {
-            if (!SprintAssistAvailable || _sprint == null || _featureManager == null) return;
-            bool want = SprintToggle.IsChecked == true;
-            if (want != _sprint.IsEnabled)
-            {
-                _featureManager.Toggle(_sprint);
-                _soundService.PlayToggle(_sprint.IsEnabled);
-            }
-        }
-
-        private void SprintDurSlider_Changed(object s, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (_sprint == null || _configManager == null) return;
-            _sprint.SprintDurationSec = e.NewValue;
-            _configManager.Config.SprintDuration = e.NewValue;
-            if (SprintDurLabel != null) SprintDurLabel.Text = $"{e.NewValue:F1}s";
-        }
-
-        private void RecoveryDurSlider_Changed(object s, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (_sprint == null || _configManager == null) return;
-            _sprint.RecoveryDurationSec = e.NewValue;
-            _configManager.Config.RecoveryDuration = e.NewValue;
-            if (RecoveryDurLabel != null) RecoveryDurLabel.Text = $"{e.NewValue:F1}s";
-        }
-
-        private void PauseDodgeCheck_Changed(object s, RoutedEventArgs e)
-        {
-            if (_sprint == null || _configManager == null) return;
-            bool val = PauseDodgeCheck.IsChecked == true;
-            _sprint.PauseDodge = val;
-            _configManager.Config.SprintPauseDodge = val;
         }
 
         // ─────────────────────────────────────────────────
@@ -1052,10 +980,14 @@ namespace PalAssist
             {
                 _configManager.Config.BetaProfileWorkEnabled = false;
                 _configManager.Config.BetaSmartWorkAssist = false;
+                _configManager.Config.BetaActiveHold = false;
             }
 
             BetaSmartWorkAssistToggle.IsChecked = false;
+            BetaActiveHoldToggle.IsChecked = false;
             ApplySmartWorkAssistToFeature(false);
+            ApplyActiveHoldToFeature(false);
+            SyncWorkAssistFocusMode(playSound: false);
             UpdateHud();
         }
 
@@ -1067,6 +999,11 @@ namespace PalAssist
             SmartWorkWaitMsBox.Text = ms.ToString();
             UpdateSmartWorkWaitHint(ms);
             ApplySmartWorkAssistToFeature(cfg.BetaSmartWorkAssist);
+
+            BetaActiveHoldToggle.IsChecked = cfg.BetaActiveHold;
+            ApplyActiveHoldToFeature(cfg.BetaActiveHold);
+            SyncWorkAssistFocusMode(playSound: false);
+            UpdateActiveHoldStatusText();
         }
 
         private void ApplySmartWorkAssistToFeature(bool enabled)
@@ -1074,6 +1011,20 @@ namespace PalAssist
             if (_workAssist == null) return;
             _workAssist.SmartPickupEnabled = enabled;
             _workAssist.SmartWaitAfterTapMs = GetSmartWorkWaitMsFromUi();
+        }
+
+        private void ApplyActiveHoldToFeature(bool enabled)
+        {
+            if (_workAssist == null) return;
+            _workAssist.ActiveHoldEnabled = enabled;
+        }
+
+        /// <summary>True when Beta is unlocked and Active Hold is toggled on.</summary>
+        private bool IsActiveHoldEffective()
+        {
+            return _configManager?.Config.BetaEnabled == true
+                   && _configManager.Config.BetaActiveHold
+                   && _workAssist?.ActiveHoldEnabled == true;
         }
 
         private void BetaSmartWorkAssistToggle_Changed(object s, RoutedEventArgs e)
@@ -1086,6 +1037,49 @@ namespace PalAssist
             if (BetaSmartWorkAssistToggle.IsChecked == true && !want)
                 BetaSmartWorkAssistToggle.IsChecked = false;
             _configManager.Save();
+        }
+
+        private void BetaActiveHoldToggle_Changed(object s, RoutedEventArgs e)
+        {
+            if (_configManager == null) return;
+            bool want = BetaActiveHoldToggle.IsChecked == true
+                        && _configManager.Config.BetaEnabled;
+            _configManager.Config.BetaActiveHold = want;
+            ApplyActiveHoldToFeature(want);
+            if (BetaActiveHoldToggle.IsChecked == true && !want)
+                BetaActiveHoldToggle.IsChecked = false;
+            SyncWorkAssistFocusMode(playSound: false);
+            UpdateActiveHoldStatusText();
+            _configManager.Save();
+        }
+
+        private void UpdateActiveHoldStatusText()
+        {
+            if (ActiveHoldStatusText == null) return;
+            if (!IsActiveHoldEffective())
+            {
+                ActiveHoldStatusText.Text = "Off — Work Assist follows Focus Lock";
+                return;
+            }
+
+            if (_workAssist?.IsEnabled != true)
+            {
+                ActiveHoldStatusText.Text = "On — enable Work Assist to hold in background";
+                return;
+            }
+
+            if (_windowTracker?.IsFound != true)
+            {
+                ActiveHoldStatusText.Text = "On — waiting for Palworld";
+                return;
+            }
+
+            if (_workAssist.IsBackgroundHold)
+                ActiveHoldStatusText.Text = "Background hold active — F only to Palworld";
+            else if (_windowTracker.IsFocused)
+                ActiveHoldStatusText.Text = "On — game focused (normal hold)";
+            else
+                ActiveHoldStatusText.Text = "On — ready for background hold";
         }
 
         private void SmartWorkWaitMsBox_GotFocus(object s, RoutedEventArgs e)
@@ -1186,7 +1180,10 @@ namespace PalAssist
             cfg.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
                                      && cfg.BetaEnabled;
             cfg.BetaSmartWorkWaitMs = GetSmartWorkWaitMsFromUi();
+            cfg.BetaActiveHold = BetaActiveHoldToggle.IsChecked == true && cfg.BetaEnabled;
             ApplySmartWorkAssistToFeature(cfg.BetaSmartWorkAssist);
+            ApplyActiveHoldToFeature(cfg.BetaActiveHold);
+            SyncWorkAssistFocusMode(playSound: false);
             _configManager.Save();
         }
 
@@ -1195,12 +1192,27 @@ namespace PalAssist
             bool lockOn = FocusLockToggle.IsChecked == true;
             bool focused = _windowTracker?.IsFocused == true;
             bool suspended = _featureManager?.IsInputSuspended == true;
+            bool workBg = _workAssist?.IsBackgroundHold == true;
 
             if (!lockOn)
             {
                 FocusLockDot.Fill = (SolidColorBrush)FindResource("TextSecondaryBrush");
                 FocusLockStatusDot.Fill = (SolidColorBrush)FindResource("TextSecondaryBrush");
-                FocusLockStatusText.Text = "Focus lock off";
+                FocusLockStatusText.Text = workBg
+                    ? "Focus lock off — Work Assist background hold"
+                    : "Focus lock off";
+            }
+            else if (focused && !suspended)
+            {
+                FocusLockDot.Fill = (SolidColorBrush)FindResource("AccentGreenBrush");
+                FocusLockStatusDot.Fill = (SolidColorBrush)FindResource("AccentGreenBrush");
+                FocusLockStatusText.Text = "Game focused — assists active";
+            }
+            else if (workBg)
+            {
+                FocusLockDot.Fill = (SolidColorBrush)FindResource("AccentYellowBrush");
+                FocusLockStatusDot.Fill = (SolidColorBrush)FindResource("AccentYellowBrush");
+                FocusLockStatusText.Text = "Focus suspended — Work Assist Active Hold";
             }
             else if (suspended || !focused)
             {
@@ -1216,38 +1228,83 @@ namespace PalAssist
                 FocusLockStatusDot.Fill = (SolidColorBrush)FindResource("AccentGreenBrush");
                 FocusLockStatusText.Text = "Game focused — assists active";
             }
+
+            UpdateActiveHoldStatusText();
         }
 
         private void OnGameFocusChanged(bool focused)
         {
-            if (_configManager?.Config.FocusLockEnabled != true || _featureManager == null)
+            SyncWorkAssistFocusMode(playSound: true);
+            UpdateFocusLockStatus();
+        }
+
+        /// <summary>
+        /// Drive Work Assist foreground / Active Hold background / full suspend based on
+        /// Focus Lock, Active Hold, and whether Palworld is focused.
+        /// </summary>
+        private void SyncWorkAssistFocusMode(bool playSound)
+        {
+            if (_featureManager == null) return;
+
+            bool focused = _windowTracker?.IsFocused == true;
+            bool gameFound = _windowTracker?.IsFound == true;
+            IntPtr hwnd = _windowTracker?.TargetHwnd ?? IntPtr.Zero;
+            bool focusLock = _configManager?.Config.FocusLockEnabled == true;
+            bool activeHold = IsActiveHoldEffective() && _workAssist?.IsEnabled == true;
+
+            if (focused)
             {
-                UpdateFocusLockStatus();
+                _focusLockWantSuspend = false;
+
+                if (focusLock)
+                {
+                    if (_featureManager.IsInputSuspended)
+                    {
+                        _focusResumeTimer?.Stop();
+                        _focusResumeTimer?.Start();
+                    }
+                    else
+                    {
+                        // Active Hold may have been in background without manager-level suspend
+                        _featureManager.ApplyWorkAssistForegroundHold();
+                    }
+                }
+                else
+                {
+                    _featureManager.ApplyWorkAssistForegroundHold();
+                }
+
                 return;
             }
 
-            // Suspend immediately when unfocused; debounce resume to avoid flicker
-            if (!focused)
+            // Unfocused
+            if (focusLock)
             {
                 _focusLockWantSuspend = true;
                 _focusResumeTimer?.Stop();
-                if (!_featureManager.IsInputSuspended)
-                {
-                    _featureManager.SetInputSuspended(true);
+                bool was = _featureManager.IsInputSuspended;
+                bool useActiveHold = activeHold && gameFound && hwnd != IntPtr.Zero;
+                // Always re-apply so toggling Active Hold mid-unfocus switches modes
+                _featureManager.SetInputSuspended(true, activeHoldWorkAssist: useActiveHold, gameHwnd: hwnd);
+                if (playSound && !was)
                     _soundService.PlayFocus(suspended: true);
-                }
             }
-            else
+            else if (activeHold && gameFound && hwnd != IntPtr.Zero)
             {
-                _focusLockWantSuspend = false;
-                if (_featureManager.IsInputSuspended)
-                {
-                    _focusResumeTimer?.Stop();
-                    _focusResumeTimer?.Start();
-                }
+                // Focus Lock off: still isolate F from other apps via background hold
+                _featureManager.ApplyWorkAssistBackgroundHold(hwnd);
             }
-
-            UpdateFocusLockStatus();
+            else if (_workAssist?.IsBackgroundHold == true)
+            {
+                // Active Hold turned off while unfocused — leave background mode
+                if (_workAssist.IsEnabled)
+                    _featureManager.ApplyWorkAssistForegroundHold();
+            }
+            else if (_workAssist is { IsEnabled: true, IsInputSuspended: true } && !focusLock)
+            {
+                // Was fully suspended; Focus Lock off and no Active Hold — resume global hold
+                _featureManager.SetInputSuspended(false);
+            }
         }
 
         private void FocusResumeTimer_Tick(object? sender, EventArgs e)
@@ -1259,7 +1316,7 @@ namespace PalAssist
                 if (_configManager?.Config.FocusLockEnabled != true || _featureManager == null) return;
                 if (_windowTracker?.IsFocused != true) return;
 
-                if (_featureManager.IsInputSuspended)
+                if (_featureManager.IsInputSuspended || _workAssist?.IsBackgroundHold == true)
                 {
                     _featureManager.SetInputSuspended(false);
                     _soundService.PlayFocus(suspended: false);
@@ -1288,12 +1345,25 @@ namespace PalAssist
             _focusResumeTimer?.Stop();
             _focusLockWantSuspend = false;
 
+            bool focused = _windowTracker?.IsFocused == true;
+            bool gameFound = _windowTracker?.IsFound == true;
+            IntPtr hwnd = _windowTracker?.TargetHwnd ?? IntPtr.Zero;
+            bool activeHold = IsActiveHoldEffective() && _workAssist?.IsEnabled == true;
+
             if (enabled)
             {
-                bool shouldSuspend = _windowTracker?.IsFocused != true;
+                bool shouldSuspend = !focused;
                 _focusLockWantSuspend = shouldSuspend;
                 bool was = _featureManager.IsInputSuspended;
-                _featureManager.SetInputSuspended(shouldSuspend);
+                if (shouldSuspend)
+                {
+                    bool useActiveHold = activeHold && gameFound && hwnd != IntPtr.Zero;
+                    _featureManager.SetInputSuspended(true, activeHoldWorkAssist: useActiveHold, gameHwnd: hwnd);
+                }
+                else
+                {
+                    _featureManager.SetInputSuspended(false);
+                }
                 if (playSound && was != shouldSuspend)
                     _soundService.PlayFocus(suspended: shouldSuspend);
             }
@@ -1303,6 +1373,9 @@ namespace PalAssist
                 _featureManager.SetInputSuspended(false);
                 if (playSound && was)
                     _soundService.PlayFocus(suspended: false);
+                // Focus Lock off while unfocused + Active Hold → keep safe background hold
+                if (!focused && activeHold && gameFound && hwnd != IntPtr.Zero)
+                    _featureManager.ApplyWorkAssistBackgroundHold(hwnd);
             }
         }
 
@@ -1313,12 +1386,8 @@ namespace PalAssist
             // Sync live UI / feature state into the config object before writing
             var cfg = _configManager.Config;
             if (_workAssist != null) cfg.WorkAssistEnabled = _workAssist.IsEnabled;
-            cfg.SprintEnabled = SprintAssistAvailable && _sprint != null && _sprint.IsEnabled;
             cfg.BetaProfileWorkEnabled = false;
 
-            cfg.SprintDuration = SprintDurSlider.Value;
-            cfg.RecoveryDuration = RecoveryDurSlider.Value;
-            cfg.SprintPauseDodge = PauseDodgeCheck.IsChecked == true;
             cfg.HudDraggable = HudDraggableToggle.IsChecked == true;
             cfg.WorkAssistShowHud = WorkAssistShowHudCheck.IsChecked == true;
             cfg.MenuX = Canvas.GetLeft(MenuPanel);
@@ -1328,7 +1397,9 @@ namespace PalAssist
             cfg.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
                                      && cfg.BetaEnabled;
             cfg.BetaSmartWorkWaitMs = GetSmartWorkWaitMsFromUi();
+            cfg.BetaActiveHold = BetaActiveHoldToggle.IsChecked == true && cfg.BetaEnabled;
             ApplySmartWorkAssistToFeature(cfg.BetaSmartWorkAssist);
+            ApplyActiveHoldToFeature(cfg.BetaActiveHold);
             cfg.AfkSafetyEnabled = AfkSafetyToggle.IsChecked == true;
 
             SyncAppearanceConfigFromUi(cfg);
@@ -1558,10 +1629,8 @@ namespace PalAssist
 
                 if (_configManager != null)
                 {
-                    if (_workAssist != null)  _configManager.Config.WorkAssistEnabled  = false;
-                    if (_sprint != null) _configManager.Config.SprintEnabled = false;
+                    if (_workAssist != null) _configManager.Config.WorkAssistEnabled = false;
                     WorkAssistToggle.IsChecked = false;
-                    SprintToggle.IsChecked = false;
                     _configManager.Config.MenuX = Canvas.GetLeft(MenuPanel);
                     _configManager.Config.MenuY = Canvas.GetTop(MenuPanel);
                     _configManager.Save();
@@ -1722,30 +1791,7 @@ namespace PalAssist
                     : (SolidColorBrush)FindResource("AccentRedBrush");
                 WorkAssistToggle.IsChecked = on;
             }
-            if (_sprint != null)
-            {
-                bool on = _sprint.IsEnabled;
-                SprintDot.Fill = on
-                    ? (SolidColorBrush)FindResource("AccentGreenBrush")
-                    : (SolidColorBrush)FindResource("AccentRedBrush");
-                SprintToggle.IsChecked = on;
-            }
-            SyncSprintStatus();
             UpdateHud();
-        }
-
-        private void SyncSprintStatus()
-        {
-            if (_sprint == null) return;
-            var (text, brush) = _sprint.State switch
-            {
-                SprintState.Sprinting    => ("⚡ Sprinting…",   FindResource("AccentCyanBrush")),
-                SprintState.Recovering   => ("🔋 Recovering…", FindResource("AccentYellowBrush")),
-                SprintState.DodgePausing => ("🛡 Dodge pause",  FindResource("AccentRedBrush")),
-                _                        => ("Idle",            FindResource("TextSecondaryBrush"))
-            };
-            SprintStatusText.Text = text;
-            SprintStatusText.Foreground = (Brush)brush;
         }
 
         // ─────────────────────────────────────────────────
@@ -1762,19 +1808,6 @@ namespace PalAssist
             {
                 anyActive = true;
                 AddHudRow("Work Assist", "Active", (SolidColorBrush)FindResource("AccentGreenBrush"));
-            }
-
-            if (_sprint != null && _sprint.IsEnabled)
-            {
-                anyActive = true;
-                var (label, brush) = _sprint.State switch
-                {
-                    SprintState.Sprinting    => ("Sprinting",  (SolidColorBrush)FindResource("AccentCyanBrush")),
-                    SprintState.Recovering   => ("Recovering", (SolidColorBrush)FindResource("AccentYellowBrush")),
-                    SprintState.DodgePausing => ("Dodge",      (SolidColorBrush)FindResource("AccentRedBrush")),
-                    _                        => ("Active",     (SolidColorBrush)FindResource("AccentGreenBrush"))
-                };
-                AddHudRow("Sprint", label, brush);
             }
 
             HudPanel.Visibility = anyActive ? Visibility.Visible : Visibility.Collapsed;
@@ -1889,21 +1922,71 @@ namespace PalAssist
             double left = Canvas.GetLeft(MenuPanel);
             if (!double.IsNaN(left) && left >= 0) return;
             MenuPanel.UpdateLayout();
-            double cx = (RootCanvas.ActualWidth  - MenuPanel.ActualWidth)  / 2;
-            double cy = (RootCanvas.ActualHeight - MenuPanel.ActualHeight) / 2;
+            GetMenuLayoutSize(out double mw, out double mh);
+            GetCanvasSize(out double cw, out double ch);
+            double cx = (cw - mw) / 2;
+            double cy = (ch - mh) / 2;
             Canvas.SetLeft(MenuPanel, Math.Max(0, cx));
             Canvas.SetTop(MenuPanel,  Math.Max(0, cy));
         }
 
+        /// <summary>
+        /// Keep the menu card inside the overlay. Uses Width (560) when ActualWidth is still 0
+        /// (Collapsed or not measured yet) — otherwise clamp allows left == canvasWidth and the
+        /// whole menu sits off the right edge after AlignToGame to a smaller window.
+        /// </summary>
         private void ClampMenuToCanvas()
         {
-            double left = Canvas.GetLeft(MenuPanel);
-            double top  = Canvas.GetTop(MenuPanel);
-            if (double.IsNaN(left) || double.IsNaN(top)) return;
-            double maxL = Math.Max(0, RootCanvas.ActualWidth  - MenuPanel.ActualWidth);
-            double maxT = Math.Max(0, RootCanvas.ActualHeight - MenuPanel.ActualHeight);
-            Canvas.SetLeft(MenuPanel, Math.Clamp(left, 0, maxL));
-            Canvas.SetTop(MenuPanel,  Math.Clamp(top,  0, maxT));
+            try
+            {
+                if (MenuPanel.Visibility == Visibility.Visible)
+                    MenuPanel.UpdateLayout();
+
+                double left = Canvas.GetLeft(MenuPanel);
+                double top  = Canvas.GetTop(MenuPanel);
+                if (double.IsNaN(left)) left = 0;
+                if (double.IsNaN(top)) top = 0;
+
+                GetMenuLayoutSize(out double mw, out double mh);
+                GetCanvasSize(out double cw, out double ch);
+                if (cw <= 1 || ch <= 1) return;
+
+                double maxL = Math.Max(0, cw - mw);
+                double maxT = Math.Max(0, ch - mh);
+                Canvas.SetLeft(MenuPanel, Math.Clamp(left, 0, maxL));
+                Canvas.SetTop(MenuPanel,  Math.Clamp(top,  0, maxT));
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("MainWindow.ClampMenuToCanvas", ex.Message, ex);
+            }
+        }
+
+        private void GetMenuLayoutSize(out double width, out double height)
+        {
+            double scale = 1.0;
+            if (MenuPanel.LayoutTransform is ScaleTransform st && st.ScaleX > 0)
+                scale = st.ScaleX;
+
+            width = MenuPanel.ActualWidth;
+            height = MenuPanel.ActualHeight;
+            if (width <= 1 || double.IsNaN(width))
+                width = !double.IsNaN(MenuPanel.Width) && MenuPanel.Width > 0 ? MenuPanel.Width : 560;
+            if (height <= 1 || double.IsNaN(height))
+                height = 480; // tall enough fallback until measured
+
+            width *= scale;
+            height *= scale;
+        }
+
+        private void GetCanvasSize(out double width, out double height)
+        {
+            width = RootCanvas.ActualWidth;
+            height = RootCanvas.ActualHeight;
+            if (width <= 1 || double.IsNaN(width)) width = ActualWidth;
+            if (height <= 1 || double.IsNaN(height)) height = ActualHeight;
+            if (width <= 1 || double.IsNaN(width)) width = SystemParameters.PrimaryScreenWidth;
+            if (height <= 1 || double.IsNaN(height)) height = SystemParameters.PrimaryScreenHeight;
         }
 
         private void MenuPanel_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1982,8 +2065,7 @@ namespace PalAssist
             {
                 try
                 {
-                    if (_workAssist != null)  _configManager.Config.WorkAssistEnabled  = _workAssist.IsEnabled;
-                    _configManager.Config.SprintEnabled = SprintAssistAvailable && _sprint != null && _sprint.IsEnabled;
+                    if (_workAssist != null) _configManager.Config.WorkAssistEnabled = _workAssist.IsEnabled;
                     _configManager.Config.BetaProfileWorkEnabled = false;
                     _configManager.Config.MenuX = Canvas.GetLeft(MenuPanel);
                     _configManager.Config.MenuY = Canvas.GetTop(MenuPanel);
@@ -1992,6 +2074,8 @@ namespace PalAssist
                     _configManager.Config.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true
                                                                && _configManager.Config.BetaEnabled;
                     _configManager.Config.BetaSmartWorkWaitMs = GetSmartWorkWaitMsFromUi();
+                    _configManager.Config.BetaActiveHold = BetaActiveHoldToggle.IsChecked == true
+                                                           && _configManager.Config.BetaEnabled;
                     _configManager.Config.AfkSafetyEnabled = AfkSafetyToggle.IsChecked == true;
                     SyncAppearanceConfigFromUi(_configManager.Config);
                     SyncSoundConfigFromUi(_configManager.Config);
@@ -2123,12 +2207,12 @@ namespace PalAssist
             if (_configManager == null) return;
             var cfg = _configManager.Config;
             if (_workAssist != null) cfg.WorkAssistEnabled = _workAssist.IsEnabled;
-            cfg.SprintEnabled = SprintAssistAvailable && _sprint != null && _sprint.IsEnabled;
             cfg.WorkAssistShowHud = WorkAssistShowHudCheck.IsChecked == true;
             cfg.FocusLockEnabled = FocusLockToggle.IsChecked == true;
             cfg.BetaEnabled = BetaEnabledToggle.IsChecked == true;
             cfg.BetaSmartWorkAssist = BetaSmartWorkAssistToggle.IsChecked == true && cfg.BetaEnabled;
             cfg.BetaSmartWorkWaitMs = GetSmartWorkWaitMsFromUi();
+            cfg.BetaActiveHold = BetaActiveHoldToggle.IsChecked == true && cfg.BetaEnabled;
             cfg.AfkSafetyEnabled = AfkSafetyToggle.IsChecked == true;
             cfg.MenuX = Canvas.GetLeft(MenuPanel);
             cfg.MenuY = Canvas.GetTop(MenuPanel);
@@ -2164,14 +2248,14 @@ namespace PalAssist
             if (cfg.BetaEnabled)
                 RestoreBetaUiFromConfig(cfg);
             else
+            {
                 ApplySmartWorkAssistToFeature(false);
+                ApplyActiveHoldToFeature(false);
+            }
 
             HudDraggableToggle.IsChecked = cfg.HudDraggable;
             WorkAssistShowHudCheck.IsChecked = cfg.WorkAssistShowHud;
             SetHudPresetCombo(cfg.HudPreset);
-            SprintDurSlider.Value = cfg.SprintDuration;
-            RecoveryDurSlider.Value = cfg.RecoveryDuration;
-            PauseDodgeCheck.IsChecked = cfg.SprintPauseDodge;
 
             // Re-register hotkeys from imported names
             try
@@ -2180,8 +2264,7 @@ namespace PalAssist
                 {
                     if (_menuHotkeyId >= 0) _hotkeyManager.Unregister(_menuHotkeyId);
                     if (_workAssistHotkeyId >= 0) _hotkeyManager.Unregister(_workAssistHotkeyId);
-                    if (_sprintHotkeyId >= 0) _hotkeyManager.Unregister(_sprintHotkeyId);
-                    _menuHotkeyId = _workAssistHotkeyId = _sprintHotkeyId = -1;
+                    _menuHotkeyId = _workAssistHotkeyId = -1;
                     RegisterConfigHotkeys();
                 }
             }
