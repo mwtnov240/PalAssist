@@ -6,7 +6,7 @@ Hold interact for work stations, keep keys from sticking on alt-tab, optional cr
 
 | | |
 |---|---|
-| **Version** | 2.4.0 |
+| **Version** | 2.4.1 |
 | **Platform** | Windows 10/11 x64 |
 | **Runtime** | Self-contained (.NET 8 bundled) |
 | **Updates** | GitHub Releases auto-check |
@@ -18,7 +18,6 @@ Hold interact for work stations, keep keys from sticking on alt-tab, optional cr
 | Feature | Description |
 |---------|-------------|
 | **Work Assist** | Holds **F** for work / interact (hotkey rebindable) |
-| **Walk Assist** | Holds **W** for continuous forward walk (hotkey rebindable, default F2) |
 | **Smart Work Assist** (Beta) | On enable: tap F → wait 1s → hold (pickup item on station first) |
 | **Focus Lock** | Releases held keys when Palworld is not focused; resumes on return |
 | **Crosshair** | Optional center reticle overlay |

@@ -1,14 +1,16 @@
 # PalAssist Changelog
 
+## 2.4.1
+
+- **Removed Walk Assist** — Palworld already has auto walk (press **X** in-game)
+- Feature, UI, hotkey, config keys, and W hold/release paths removed
+
 ## 2.4.0
 
-**Walk Assist**
+**Walk Assist** (removed in 2.4.1)
 
-- **Walk Assist**: holds **W** for continuous forward walk (same hold backend as Work Assist)
-- Toggle from the Assists tab or a rebindable hotkey (default **F2**)
-- Optional HUD indicator; works with Focus Lock, Emergency Stop, and AFK safety
-- Can run together with Work Assist (F + W)
-- Force-release and emergency paths also release W
+- Walk Assist held **W** for continuous forward walk (same hold backend as Work Assist)
+- Rebindable hotkey (default F2); HUD; Focus Lock / emergency / AFK coverage
 
 ## 2.3.0
 

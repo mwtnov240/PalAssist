@@ -126,7 +126,6 @@ namespace PalAssist.Core
 
         private static ushort ScanToVk(ushort scanCode) => scanCode switch
         {
-            NativeMethods.SCAN_W => NativeMethods.VK_W,
             NativeMethods.SCAN_F => NativeMethods.VK_F,
             _ => 0
         };

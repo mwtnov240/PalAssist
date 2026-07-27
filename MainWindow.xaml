@@ -224,61 +224,6 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- ── Walk Assist ── -->
-                    <Border Margin="14,2,14,6" Padding="14,12" CornerRadius="10">
-                        <Border.Background>
-                            <SolidColorBrush Color="#1A1A2E" Opacity="0.7"/>
-                        </Border.Background>
-                        <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Ellipse x:Name="WalkAssistDot" Width="9" Height="9"
-                                                 Fill="{DynamicResource AccentRedBrush}"
-                                                 Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Walk Assist"
-                                                   FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                        <Border Style="{StaticResource HelpHintStyle}">
-                                            <Border.ToolTip>
-                                                <ToolTip MaxWidth="300">
-                                                    <TextBlock TextWrapping="Wrap" FontFamily="Segoe UI" FontSize="12">
-                                                        <Run FontWeight="SemiBold" Text="What: "/><Run Text="Holds W for continuous forward walk.&#x0a;"/>
-                                                        <Run FontWeight="SemiBold" Text="When: "/><Run Text="Long travel between bases or exploring so you don’t hold W yourself."/>
-                                                    </TextBlock>
-                                                </ToolTip>
-                                            </Border.ToolTip>
-                                            <TextBlock Text="?" FontSize="10" FontWeight="Bold"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                    </StackPanel>
-                                    <TextBlock x:Name="WalkAssistSubtitle"
-                                               Text="Holds W  ·  Hotkey: F2"
-                                               FontFamily="Segoe UI" FontSize="10"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Margin="17,3,0,0"/>
-                                </StackPanel>
-                                <ToggleButton x:Name="WalkAssistToggle" Grid.Column="1"
-                                              Style="{StaticResource ToggleSwitchStyle}"
-                                              VerticalAlignment="Center"
-                                              Checked="WalkAssistToggle_Changed"
-                                              Unchecked="WalkAssistToggle_Changed"/>
-                            </Grid>
-
-                            <CheckBox x:Name="WalkAssistShowHudCheck" Content="Show HUD Indicator"
-                                      Foreground="{DynamicResource TextSecondaryBrush}"
-                                      FontFamily="Segoe UI" FontSize="11"
-                                      Margin="17,6,0,0"
-                                      Checked="WalkAssistShowHudCheck_Changed"
-                                      Unchecked="WalkAssistShowHudCheck_Changed"/>
-                        </StackPanel>
-                    </Border>
-
                     <!-- ── Focus Lock (stable) ── -->
                     <Border Margin="14,2,14,6" Padding="14,12" CornerRadius="10">
                         <Border.Background>
@@ -679,19 +624,6 @@
                                 <Button x:Name="RebindWorkAssistBtn" Grid.Column="1"
                                         Content="F1" Style="{StaticResource RebindBtnStyle}"
                                         Click="RebindWorkAssistBtn_Click"/>
-                            </Grid>
-                            <!-- Walk Assist Toggle -->
-                            <Grid Margin="0,0,0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Walk Assist Toggle" FontFamily="Segoe UI" FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <Button x:Name="RebindWalkAssistBtn" Grid.Column="1"
-                                        Content="F2" Style="{StaticResource RebindBtnStyle}"
-                                        Click="RebindWalkAssistBtn_Click"/>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -1121,10 +1053,7 @@
                         <Run Text=" menu  ·  "/>
                         <Run x:Name="FooterWorkAssistKey" Text="F1" FontWeight="Bold"
                              Foreground="{DynamicResource AccentCyanBrush}"/>
-                        <Run Text=" work  ·  "/>
-                        <Run x:Name="FooterWalkAssistKey" Text="F2" FontWeight="Bold"
-                             Foreground="{DynamicResource AccentCyanBrush}"/>
-                        <Run Text=" walk"/>
+                        <Run Text=" work"/>
                     </TextBlock>
                 </Border>
 

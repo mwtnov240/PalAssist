@@ -432,7 +432,6 @@ namespace PalAssist.Features
                 for (int i = 0; i < 2; i++)
                 {
                     InputSimulator.KeyUp(NativeMethods.VK_F, NativeMethods.SCAN_F);
-                    InputSimulator.KeyUp(NativeMethods.VK_W, NativeMethods.SCAN_W);
                 }
             }
             catch (Exception ex)
